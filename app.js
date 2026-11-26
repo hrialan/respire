@@ -123,8 +123,20 @@
   // Each event is a line in the GoatCounter dashboard. No-op when the script is
   // blocked, offline, or on localhost (GoatCounter ignores it).
 
-  function track(path) {
+  // GoatCounter rate-limits bursts (HTTP 429), so events go out one by one.
+  const TRACK_GAP_MS = 400;
+  const trackQueue = [];
+  let trackTimer = 0;
+
+  function flushTrack() {
+    const path = trackQueue.shift();
     try { window.goatcounter?.count?.({ path, title: path, event: true }); } catch { /* blocked */ }
+    trackTimer = trackQueue.length ? setTimeout(flushTrack, TRACK_GAP_MS) : 0;
+  }
+
+  function track(path) {
+    trackQueue.push(path);
+    if (!trackTimer) trackTimer = setTimeout(flushTrack, 0);
   }
 
   function trackStart() {
