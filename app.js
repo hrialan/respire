@@ -119,6 +119,26 @@
     wakeLock = null;
   }
 
+  /* ================= Usage stats (GoatCounter, no cookies) ================= */
+  // Each event is a line in the GoatCounter dashboard. No-op when the script is
+  // blocked, offline, or on localhost (GoatCounter ignores it).
+
+  function track(path) {
+    try { window.goatcounter?.count?.({ path, title: path, event: true }); } catch { /* blocked */ }
+  }
+
+  function trackStart() {
+    const installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+    const rhythmLabel = settings.rhythm === 'custom' ? 'perso' : settings.rhythm;
+    track('seance/demarree');
+    track(`mode/${installed ? 'app' : 'web'}`);
+    track(`reglages/duree-${settings.duration}`);
+    track(`reglages/rythme-${rhythmLabel}`);
+    track(`reglages/ciel-${settings.sky}`);
+    track(`reglages/son-${settings.sound ? 'oui' : 'non'}`);
+    track(`reglages/vibration-${settings.vibration ? 'oui' : 'non'}`);
+  }
+
   /* ================= Daily count ================= */
 
   function recordSession() {
@@ -178,6 +198,7 @@
     countdownStart = performance.now();
     setPhase('3');
     subEl.textContent = 'Installez-vous';
+    trackStart();
   }
 
   function beginRun(now) {
@@ -221,9 +242,11 @@
     setPhase('Séance terminée');
     subEl.textContent = `${mins} min · ${run.cycles} respirations\n${nth} séance aujourd’hui`;
     run = null;
+    track('seance/terminee');
   }
 
   function goHome() {
+    if (state === 'countdown' || state === 'running' || state === 'paused') track('seance/interrompue');
     setState('home');
     run = null;
     Ambience.stop();

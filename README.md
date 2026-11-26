@@ -61,3 +61,19 @@ uv run tools/make_icons.py
 ### Publier
 
 Il suffit de pousser sur `main` : GitHub Pages republie en une minute environ. Les apps déjà installées récupèrent la mise à jour à la prochaine ouverture. Si tu ajoutes un fichier, ajoute-le aussi à `ASSETS` dans `sw.js` et change le numéro de `CACHE`.
+
+## Statistiques
+
+La mesure d'audience passe par [GoatCounter](https://www.goatcounter.com) : open source, **sans cookies** et sans donnée personnelle. Aucun bandeau de consentement n'est donc nécessaire. Le tableau de bord se trouve sur https://hrialan-respire.goatcounter.com.
+
+En plus des pages vues, l'app envoie ces événements :
+
+| Événement | Quand |
+| --- | --- |
+| `seance/demarree` | au lancement d'une séance |
+| `seance/terminee` | quand la séance va jusqu'au bout |
+| `seance/interrompue` | quand on arrête avant la fin |
+| `mode/app` · `mode/web` | depuis l'app installée ou depuis le navigateur |
+| `reglages/duree-…`, `reglages/rythme-…`, `reglages/ciel-…`, `reglages/son-…`, `reglages/vibration-…` | les réglages au lancement |
+
+Les visites depuis `localhost` ne sont pas comptées. Si le script est bloqué ou si l'on est hors ligne, l'app fonctionne normalement.
