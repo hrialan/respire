@@ -256,6 +256,10 @@
         t0: T, dur: 11 + Math.random() * 6, dir: Math.random() < 0.5 ? 1 : -1,
         alt: 0.42 + Math.random() * 0.2, size: 0.8 + Math.random() * 0.35,
         ph: Math.random() * TAU, fspd: 5 + Math.random() * 2.5,
+        // Flight path: a slow climb or dive, a looser undulation, uneven speed
+        arc: (Math.random() * 2 - 1) * 0.2, arcF: 0.6 + Math.random() * 0.8,
+        wob: 0.03 + Math.random() * 0.04, wobF: 1.5 + Math.random() * 1.5,
+        surge: 0.03 + Math.random() * 0.03,
       };
     }
     if (gull && T - gull.t0 > gull.dur) {
@@ -266,25 +270,45 @@
 
   function drawGull(T, p, cx, level) {
     if (!gull) return;
-    const k = (T - gull.t0) / gull.dur;
-    const x = cx + gull.dir * (-1.15 + 2.3 * k) * orbMax;
-    // Fly above the tide: rise a little when the water comes up
-    const y = Math.min(ocy - orbMax * gull.alt, level - orbMax * 0.16) + Math.sin(T * 0.5 + gull.ph) * orbMax * 0.03;
-    const g = orbMax * 0.05 * gull.size;
-    const glide = 0.35 + 0.65 * Math.max(0, Math.sin(T * 0.45 + gull.ph));
-    const flap = Math.sin(T * gull.fspd + gull.ph) * glide;
+    const G = gull;
+    const glide = 0.35 + 0.65 * Math.max(0, Math.sin(T * 0.45 + G.ph));
+    const flap = Math.sin(T * G.fspd + G.ph) * glide;
+    const path = (k) => {
+      const kk = k + G.surge * Math.sin(k * TAU * 1.3 + G.ph);   // speeds up, slows down
+      const px = cx + G.dir * (-1.15 + 2.3 * kk) * orbMax;
+      const py = ocy - orbMax * (
+        G.alt +
+        G.arc * Math.sin(k * Math.PI * G.arcF + G.ph * 0.3) +
+        G.wob * Math.sin(k * TAU * G.wobF + G.ph)
+      );
+      return [px, py];
+    };
+    const k = (T - G.t0) / G.dur;
+    let [x, y] = path(k);
+    const [x2, y2] = path(k + 0.01);
+    const g = orbMax * 0.05 * G.size;
+    // Wing beats lift the body a touch
+    y += -flap * g * 0.18 + Math.sin(T * 0.8 + G.ph) * g * 0.15;
+    // Stay above the tide: rise when the water comes up
+    y = Math.min(y, level - orbMax * 0.16);
+    const bank = Math.max(-0.35, Math.min(0.35, Math.atan2(y2 - y, Math.abs(x2 - x) + 1e-6) * 0.6)) * G.dir;
+
     const tip = g * (0.05 + 0.4 * flap);
     const arch = g * (0.42 + 0.2 * flap);
     const col = mix(mix(p.skyT, [0, 0, 0], 0.45), [70, 80, 95], Math.max(0, (p.rays - 0.3) / 0.7));
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(bank);
     ctx.strokeStyle = rgba(col, 0.85 * (1 - p.stars));
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.lineWidth = Math.max(1.1, g * 0.15);
     ctx.beginPath();
-    ctx.moveTo(x - g, y + tip);
-    ctx.quadraticCurveTo(x - g * 0.45, y - arch, x, y);
-    ctx.quadraticCurveTo(x + g * 0.45, y - arch, x + g, y + tip);
+    ctx.moveTo(-g, tip);
+    ctx.quadraticCurveTo(-g * 0.45, -arch, 0, 0);
+    ctx.quadraticCurveTo(g * 0.45, -arch, g, tip);
     ctx.stroke();
+    ctx.restore();
   }
 
   /* ---------- Shooting stars (state) ---------- */
