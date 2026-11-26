@@ -48,7 +48,7 @@ Paramètres d'URL utiles pour tester :
 | `app.js` | moteur de séance (machine à états calée sur l'horloge), réglages, vibrations, verrouillage de l'écran |
 | `scene.js` | toute la scène sur un `<canvas>` plein écran : palettes du ciel selon l'heure, vagues, lumière, visiteurs |
 | `audio.js` | ambiance sonore Web Audio : bruit rose filtré et nappe d'accords |
-| `sw.js` | service worker : cache hors ligne (sert d'abord le cache, puis le met à jour en arrière-plan) |
+| `sw.js` | service worker : réseau d’abord (toujours à jour en ligne), cache hors ligne |
 | `manifest.webmanifest` | métadonnées de la PWA |
 | `icons/` | icônes. Les PNG sont générés par `tools/make_icons.py`, le SVG est fait à la main |
 
@@ -62,4 +62,4 @@ uv run tools/make_icons.py
 
 ### Publier
 
-Il suffit de pousser sur `main` : GitHub Pages republie en une minute environ. Les apps déjà installées récupèrent la mise à jour à la deuxième ouverture. Si tu ajoutes un fichier, ajoute-le aussi à `ASSETS` dans `sw.js` et change le numéro de `CACHE`.
+Il suffit de pousser sur `main` : GitHub Pages republie en une minute environ. Les apps déjà installées récupèrent la mise à jour à la prochaine ouverture. Si tu ajoutes un fichier, ajoute-le aussi à `ASSETS` dans `sw.js` et change le numéro de `CACHE`.
