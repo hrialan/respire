@@ -1,19 +1,19 @@
-// Respire — ambiance sonore générée en direct (aucun fichier audio).
+// Respire — le souffle du vent, généré en direct (aucun fichier audio).
 //
-// Deux couches :
-//   - le ressac : un bruit rose filtré. Quand le souffle monte, le filtre
-//     s'ouvre et le volume augmente, comme une vague qui arrive puis se retire ;
-//   - une nappe : un accord ouvert et chaud (La2 Mi3 Si3 Do#4 Mi4), chaque note
-//     doublée et très légèrement désaccordée pour un miroitement lent.
-// Les plages de variation sont volontairement étroites : la mer respire,
-// elle ne se déchaîne jamais.
+// Le souffle pilote le vent : à l'inspiration il se lève, s'éclaircit et se
+// met à siffler ; à l'expiration il retombe. Par-dessus, des rafales lentes et
+// irrégulières le rendent vivant, et il se déplace doucement dans l'espace.
+//
+// Couches (toutes à partir du même bruit rose) :
+//   - le corps : un grondement grave, filtré passe-bas ;
+//   - le souffle : une bande large qui monte avec l'inspiration ;
+//   - le sifflement : une bande étroite et résonante, surtout dans les rafales ;
+//   - la nappe : un accord chaud et ouvert (La2 Mi3 Si3 Do#4 Mi4), en fond.
 (() => {
   'use strict';
 
   const PAD_NOTES = [110, 164.81, 246.94, 277.18, 329.63];
-  const surfFreq = (s) => 220 + 650 * s;
-  const surfGain = (s) => 0.06 + 0.13 * s;
-  const padGain = (s) => 0.022 + 0.012 * s;
+  const VOLUME = 2.5;   // overall level (≈ -22 dBFS RMS at full breath)
 
   let actx = null;
   let noise = null;
@@ -70,20 +70,44 @@
     return g;
   }
 
-  // Builds one voice (surf + pad) that fades in, silent until driven.
+  // Stereo movement where supported (falls back to a plain gain).
+  function panner() {
+    return actx.createStereoPanner ? actx.createStereoPanner() : gain(1);
+  }
+
+  // Slow, irregular gusts: 0..1, never quite repeating.
+  function gustAt(t) {
+    const g = 0.5 * Math.sin(t * 0.13) + 0.3 * Math.sin(t * 0.31 + 1.3) + 0.2 * Math.sin(t * 0.71 + 4.1);
+    return 0.5 + 0.5 * g;
+  }
+
+  // Builds one voice, silent until driven by drive().
   function createVoice() {
     const t = actx.currentTime;
     const out = gain(0);
-    out.gain.setTargetAtTime(1, t, 0.8);
+    out.gain.setTargetAtTime(VOLUME, t, 0.8);
     out.connect(actx.destination);
 
     const src = actx.createBufferSource();
     src.buffer = pinkNoise();
     src.loop = true;
     src.loopEnd = noise.duration - 0.5;
-    const lp = filter('lowpass', surfFreq(0), 0.3);
-    const surf = gain(0);
-    src.connect(filter('highpass', 70)).connect(lp).connect(surf).connect(out);
+    const clean = filter('highpass', 40);
+    src.connect(clean);
+
+    const bodyLp = filter('lowpass', 220, 0.5);
+    const body = gain(0);
+    clean.connect(bodyLp).connect(body).connect(out);
+
+    const breathBp = filter('bandpass', 500, 0.8);
+    const breathG = gain(0);
+    const breathPan = panner();
+    clean.connect(breathBp).connect(breathG).connect(breathPan).connect(out);
+
+    const whistleBp = filter('bandpass', 800, 14);
+    const whistleG = gain(0);
+    const whistlePan = panner();
+    clean.connect(whistleBp).connect(whistleG).connect(whistlePan).connect(out);
     src.start();
 
     const pad = gain(0);
@@ -101,7 +125,7 @@
     });
 
     return {
-      lp, surf, pad,
+      bodyLp, body, breathBp, breathG, breathPan, whistleBp, whistleG, whistlePan, pad,
       stop(fadeSec) {
         const now = actx.currentTime;
         out.gain.cancelScheduledValues(now);
@@ -113,6 +137,31 @@
     };
   }
 
+  // s: breath level 0..1. playing=false lets the wind die down (pause).
+  function drive(v, s, playing) {
+    const t = actx.currentTime;
+    const tc = playing ? 0.12 : 0.6;
+    const gust = gustAt(t);
+    const e = s * (0.75 + 0.5 * gust);   // energy: the breath, pushed by the gusts
+    const on = playing ? 1 : 0;
+    const set = (param, value, k = tc) => param.setTargetAtTime(value, t, k);
+
+    set(v.bodyLp.frequency, 160 + 260 * e, 0.15);
+    set(v.body.gain, on * (0.1 + 0.12 * e));
+
+    set(v.breathBp.frequency, 380 + 1100 * e + 150 * gust, 0.12);
+    set(v.breathG.gain, on * (0.04 + 0.2 * e));
+
+    set(v.whistleBp.frequency, 520 + 900 * e + 300 * gust, 0.15);
+    set(v.whistleG.gain, on * 0.11 * Math.pow(e, 1.6));
+
+    if (v.breathPan.pan) {
+      set(v.breathPan.pan, 0.35 * Math.sin(t * 0.07), 0.5);
+      set(v.whistlePan.pan, 0.6 * Math.sin(t * 0.11 + 2), 0.5);
+    }
+    set(v.pad.gain, on * (0.018 + 0.01 * s), 0.4);
+  }
+
   window.Ambience = {
     unlock,
 
@@ -120,14 +169,8 @@
       if (!live && unlock()) live = createVoice();
     },
 
-    // s: breath level 0..1. playing=false fades to silence (pause).
     update(s, playing = true) {
-      if (!live) return;
-      const t = actx.currentTime;
-      const tc = playing ? 0.25 : 0.5;
-      live.lp.frequency.setTargetAtTime(surfFreq(s), t, 0.25);
-      live.surf.gain.setTargetAtTime(playing ? surfGain(s) : 0, t, tc);
-      live.pad.gain.setTargetAtTime(playing ? padGain(s) : 0, t, tc);
+      if (live) drive(live, s, playing);
     },
 
     stop(fadeSec = 1.2) {
@@ -136,18 +179,21 @@
       live = null;
     },
 
-    // A single slow wave in and out, to preview the sound from the settings.
+    // One slow breath in and out, to preview the sound from the settings.
     preview() {
       if (!unlock()) return;
       const v = createVoice();
-      const t = actx.currentTime;
-      v.pad.gain.setTargetAtTime(padGain(0.5), t, 0.5);
-      for (const [param, fn] of [[v.surf.gain, surfGain], [v.lp.frequency, surfFreq]]) {
-        param.setValueAtTime(fn(0), t);
-        param.linearRampToValueAtTime(fn(1), t + 2.2);
-        param.linearRampToValueAtTime(fn(0), t + 4.5);
-      }
-      setTimeout(() => v.stop(1.5), 4500);
+      const t0 = performance.now();
+      const DURATION = 5000;
+      const timer = setInterval(() => {
+        const k = (performance.now() - t0) / DURATION;
+        if (k >= 1) {
+          clearInterval(timer);
+          v.stop(1.5);
+          return;
+        }
+        drive(v, Math.sin(k * Math.PI), true);
+      }, 50);
     },
   };
 })();
