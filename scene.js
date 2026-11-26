@@ -156,8 +156,97 @@
 
   /* ---------- Shooting stars ---------- */
 
+  /* ---------- Sailboat passing far away ---------- */
+
+  const DEBUG_BOAT = new URLSearchParams(location.search).has('boat');
+  let sailing = false;           // true during a breathing session
+  let boat = null;
+  let nextBoat = Infinity;
+
+  function scheduleBoat(T) {
+    nextBoat = T + (DEBUG_BOAT ? 1.5 : 12 + Math.random() * 40);
+  }
+
+  function updateBoat(T) {
+    if (nextBoat === -1) scheduleBoat(T);
+    if (!boat && (sailing || DEBUG_BOAT) && T > nextBoat) {
+      const dir = Math.random() < 0.5 ? 1 : -1;
+      boat = { t0: T, dur: DEBUG_BOAT ? 22 : 45 + Math.random() * 30, dir, size: 0.85 + Math.random() * 0.3 };
+    }
+    if (boat && T - boat.t0 > boat.dur) {
+      boat = null;
+      if (sailing || DEBUG_BOAT) scheduleBoat(T);
+    }
+  }
+
+  // Abstract silhouette: a hull, a mast, a mainsail and a jib.
+  function drawBoat(p, T, f, cx, R) {
+    if (!boat) return;
+    const k = (T - boat.t0) / boat.dur;
+    const x = cx + boat.dir * (-1.15 + 2.3 * k) * R;
+    const L = R * 0.11 * boat.size;
+    const slope = (f(x + 3) - f(x - 3)) / 6;
+    const y = f(x) + L * 0.06 + Math.sin(T * 1.3) * L * 0.03;
+    const fadeIn = Math.min(1, k * 8, (1 - k) * 8);
+
+    // Daylight: white sails. Sunset: dark silhouette. Night: moonlit sails.
+    const pale = Math.max(Math.max(0, (p.rays - 0.3) / 0.7), p.stars * 0.55);
+    const sail = mix(mix(p.skyT, [0, 0, 0], 0.55), [244, 246, 250], pale);
+    const hull = mix(mix(p.skyT, [0, 0, 0], 0.7), [40, 60, 90], pale * 0.6);
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Math.atan(slope) * 0.7 + Math.sin(T * 0.9) * 0.03);
+    ctx.scale(boat.dir * L, L);
+    ctx.globalAlpha = fadeIn * 0.92;
+
+    ctx.fillStyle = rgb(hull);
+    ctx.beginPath();
+    ctx.moveTo(-0.6, -0.02);
+    ctx.lineTo(0.62, -0.02);
+    ctx.lineTo(0.45, 0.16);
+    ctx.lineTo(-0.42, 0.16);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = rgb(sail);
+    ctx.beginPath();                 // mainsail, slightly curved leech
+    ctx.moveTo(0.02, -1.08);
+    ctx.quadraticCurveTo(0.42, -0.5, 0.5, -0.1);
+    ctx.lineTo(0.02, -0.1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = fadeIn * 0.8;
+    ctx.beginPath();                 // jib
+    ctx.moveTo(-0.06, -0.92);
+    ctx.lineTo(-0.06, -0.12);
+    ctx.lineTo(-0.5, -0.12);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.globalAlpha = fadeIn;
+    ctx.strokeStyle = rgb(hull);
+    ctx.lineWidth = 0.04;
+    ctx.beginPath();
+    ctx.moveTo(-0.02, -1.12);
+    ctx.lineTo(-0.02, -0.02);
+    ctx.stroke();
+
+    if (p.stars > 0.3) {             // masthead light at night
+      ctx.restore();
+      ctx.save();
+      const mx = x - boat.dir * 0.02 * L;
+      const my = y - 1.12 * L;
+      glow(mx, my, 0, L * 0.35, [255, 210, 150], 0.7 * p.stars * fadeIn);
+    }
+    ctx.restore();
+  }
+
+  /* ---------- Shooting stars (state) ---------- */
+
   let shoot = null;
   let nextShoot = 6 + Math.random() * 10;
+  if (DEBUG_BOAT) scheduleBoat(0);
 
   function drawShootingStar(T, p, level) {
     if (p.stars < 0.5) return;
@@ -243,6 +332,7 @@
     const lx = cx + R * 0.28;
     const ly = cy - R * (0.12 + 0.72 * p.alt);
     const lightAmt = p.sun + 0.6 * p.moon;
+    updateBoat(T);
 
     // Background and ambient light spilling beyond the orb
     ctx.globalCompositeOperation = 'source-over';
@@ -344,6 +434,7 @@
       ctx.strokeStyle = rgba(p.light, 0.06 + 0.1 * w.depth);
       ctx.lineWidth = 1;
       ctx.stroke();
+      if (i === 0) drawBoat(p, T, f, cx, R);
       if (i === WAVES.length - 1) front = f;
     });
 
@@ -438,6 +529,12 @@
 
   window.Scene = {
     draw,
+    // Boats only sail by during a session, at random intervals.
+    setSailing(on) {
+      if (on === sailing) return;
+      sailing = on;
+      if (on && !boat) nextBoat = -1;   // scheduled on the next frame, in scene time
+    },
     setSky(mode) {
       skyMode = mode;
       paletteAtMs = -Infinity;

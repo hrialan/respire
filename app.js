@@ -278,6 +278,7 @@
   function setState(s) {
     state = s;
     app.dataset.state = s;
+    Scene.setSailing(s === 'running' || s === 'paused');
   }
 
   function setProgress(p) {

@@ -9,6 +9,11 @@
   <g clip-path="url(#o)">
     <rect x="16" y="16" width="68" height="36" fill="url(#sky)"/>
     <circle cx="50" cy="44" r="9" fill="url(#sun)"/>
+    <g transform="translate(33 49.6) scale(5.2)" fill="#241632">
+      <path d="M-.6 0H.62L.45.16H-.42Z"/>
+      <path d="M.02-1.08Q.42-.5.5-.1H.02Z"/>
+      <path d="M-.06-.92V-.12H-.5Z" fill-opacity=".85"/>
+    </g>
     <path d="M14 51 C 26 48, 36 48, 48 51 S 72 54, 86 50 V86 H14 Z" fill="url(#sea)"/>
     <path d="M14 51 C 26 48, 36 48, 48 51 S 72 54, 86 50" fill="none" stroke="#ffe6d7" stroke-opacity=".75" stroke-width="1.2"/>
     <g stroke="#ffbe82" stroke-linecap="round" stroke-width="1.4">
