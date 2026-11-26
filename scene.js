@@ -231,7 +231,7 @@
     }
     if (b.cur && t - b.cur.t0 > b.cur.dur) {
       b.cur = null;
-      b.next = active ? t + (DEBUG_BOAT ? 1.5 : between(12, 52)) : Infinity;
+      b.next = active ? t + (DEBUG_BOAT ? 1.5 : between(15, 40)) : Infinity;
     }
   }
 
@@ -627,7 +627,7 @@
     setSession(active) {
       if (active === inSession) return;
       inSession = active;
-      if (active && !sailboat.cur) sailboat.next = performance.now() / 1000 + between(12, 52);
+      if (active && !sailboat.cur) sailboat.next = performance.now() / 1000 + between(4, 10);   // first one soon
       if (!active && !DEBUG_BOAT) sailboat.next = Infinity;
     },
   };
