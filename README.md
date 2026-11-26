@@ -10,8 +10,8 @@ Cohérence cardiaque, simplement. Une webapp installable : une mer abstraite dan
 - **Une scène vivante** : l'orbe grossit et la marée monte à l'inspiration. Cinq couches de vagues, de l'écume, le reflet du soleil ou de la lune, des rayons sous l'eau le jour, du plancton lumineux la nuit.
 - **Un ciel qui suit l'heure** : aube, jour, couchant, nuit étoilée, avec des transitions continues. On peut aussi forcer l'ambiance dans les réglages.
 - **Des visiteurs** : un voilier et une mouette traversent sans cesse l'horizon, l'un après l'autre, et la nuit une étoile filante passe de temps en temps.
-- **Vibrations** : une impulsion à l'inspiration, deux à l'expiration, et un motif en fin de séance. Sur Android, c'est l'API Vibration. Sur iPhone (iOS 18 et plus), c'est un léger retour haptique système.
-- **Son du vent (optionnel)** : un vent généré en direct, qui se lève à l'inspiration et retombe à l'expiration. Rafales irrégulières, léger sifflement, mouvement gauche-droite et une nappe chaude en fond.
+- **Vibrations (Android)** : une impulsion à l'inspiration, deux à l'expiration, et un motif en fin de séance. Sur iPhone, Safari ne permet pas aux sites de vibrer pendant la séance : c'est alors le son qui guide.
+- **Son du vent (optionnel)** : un vent généré en direct, qui se lève à l'inspiration et retombe à l'expiration. Rafales irrégulières, léger sifflement, mouvement gauche-droite et une nappe chaude en fond. Le son joue même quand l'iPhone est en mode silencieux.
 - L'écran reste allumé pendant la séance. L'app fonctionne hors ligne et compte tes séances du jour.
 
 **Réglages** : durée (3, 5, 10 ou 15 min), rythme (5·5, 4·6, 4·4 ou personnalisé), ciel, vibration, son.

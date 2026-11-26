@@ -75,7 +75,9 @@
   const IOS_TICKS = { in: 1, out: 2, end: 3, tap: 1 };
 
   // iOS Safari has no Vibration API. Since iOS 18, toggling a native
-  // <input type="checkbox" switch> plays a light system haptic.
+  // <input type="checkbox" switch> plays a light system haptic. Best effort:
+  // recent iOS versions reportedly only allow it right after a tap, so it
+  // rarely fires during a session (the settings sheet says so).
   function iosTick() {
     try {
       const label = document.createElement('label');
@@ -203,6 +205,7 @@
     run.remaining = -1;
     run.quietCue = true;
     setState('running');
+    if (settings.sound) Ambience.unlock();   // iOS may have suspended audio meanwhile
     keepAwake();
   }
 
@@ -308,7 +311,7 @@
     $('rhythmNote').textContent = `${fmt(60 / (i + x))} respirations par minute`;
     vibToggle.checked = settings.vibration;
     soundToggle.checked = settings.sound;
-    $('vibNote').hidden = canVibrate || !settings.vibration;
+    $('vibNote').hidden = canVibrate;
     Scene.setSky(settings.sky);
     if (state === 'home') subEl.textContent = homeSummary();
   }

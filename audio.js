@@ -19,10 +19,19 @@
   let noise = null;
   let live = null;   // the voice that follows the breath during a session
 
-  // Must be called from a user gesture at least once (iOS / autoplay policies).
+  // iOS mutes Web Audio when the ring/silent switch is on, unless the page
+  // declares itself as media playback (Safari 16.4+). Only done while the wind
+  // is playing, so the app never interrupts the user's music otherwise.
+  function setAudioSession(type) {
+    try { if ('audioSession' in navigator) navigator.audioSession.type = type; } catch { /* unsupported */ }
+  }
+
+  // Must be called from a user gesture (iOS / autoplay policies): on start,
+  // and again on resume, since iOS may suspend the context in between.
   function unlock() {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return false;
+    setAudioSession('playback');
     if (!actx) actx = new AC();
     if (actx.state === 'suspended') actx.resume();
     return true;
@@ -178,6 +187,7 @@
       if (!live) return;
       live.stop(fadeSec);
       live = null;
+      setTimeout(() => { if (!live) setAudioSession('auto'); }, (fadeSec + 0.5) * 1000);
     },
 
     // One slow breath in and out, to preview the sound from the settings.
@@ -191,6 +201,7 @@
         if (k >= 1) {
           clearInterval(timer);
           v.stop(1.5);
+          setTimeout(() => { if (!live) setAudioSession('auto'); }, 2000);
           return;
         }
         drive(v, Math.sin(k * Math.PI), true);
