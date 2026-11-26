@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Respire</title>
+  <meta name="description" content="Cohérence cardiaque, simplement.">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Respire">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app" data-state="home">
+    <header class="top">
+      <button id="settingsBtn" class="icon-btn only-home" aria-label="Réglages">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+      </button>
+      <button id="stopBtn" class="icon-btn only-session" aria-label="Arrêter la séance">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>
+      </button>
+    </header>
+
+    <section class="stage" id="stage">
+      <div class="flower-wrap">
+        <svg class="ring" viewBox="0 0 100 100" aria-hidden="true">
+          <circle class="ring-track" cx="50" cy="50" r="48" pathLength="1"/>
+          <circle class="ring-progress" id="ringProgress" cx="50" cy="50" r="48" pathLength="1"/>
+        </svg>
+        <div class="flower" id="flower" style="--s:.4">
+          <div class="halo"></div>
+          <div class="petal" style="--i:0"></div>
+          <div class="petal" style="--i:1"></div>
+          <div class="petal" style="--i:2"></div>
+          <div class="petal" style="--i:3"></div>
+          <div class="petal" style="--i:4"></div>
+          <div class="petal" style="--i:5"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="caption" aria-live="polite">
+      <p class="phase" id="phase">Respire</p>
+      <p class="sub" id="sub"></p>
+    </div>
+
+    <footer class="bottom">
+      <button id="startBtn" class="primary only-home">Commencer</button>
+      <button id="doneBtn" class="primary only-done">Terminé</button>
+      <p class="hint">Touchez l’écran pour mettre en pause</p>
+    </footer>
+  </main>
+
+  <div class="backdrop" id="backdrop"></div>
+  <aside class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Réglages" inert>
+    <div class="grabber"></div>
+    <h2>Réglages</h2>
+
+    <div class="group">
+      <div class="group-label">Durée</div>
+      <div class="seg" data-key="duration">
+        <button data-v="3">3 min</button>
+        <button data-v="5">5 min</button>
+        <button data-v="10">10 min</button>
+        <button data-v="15">15 min</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-label">Rythme <span class="muted">inspiration · expiration</span></div>
+      <div class="seg" data-key="rhythm">
+        <button data-v="5-5">5 · 5</button>
+        <button data-v="4-6">4 · 6</button>
+        <button data-v="4-4">4 · 4</button>
+        <button data-v="custom">Perso</button>
+      </div>
+      <div class="custom" id="custom" hidden>
+        <label class="range-row">
+          <span>Inspiration</span>
+          <input type="range" id="inhaleR" min="2" max="10" step="0.5">
+          <output id="inhaleV"></output>
+        </label>
+        <label class="range-row">
+          <span>Expiration</span>
+          <input type="range" id="exhaleR" min="2" max="12" step="0.5">
+          <output id="exhaleV"></output>
+        </label>
+      </div>
+      <p class="note" id="rhythmNote"></p>
+    </div>
+
+    <div class="list">
+      <label class="row">
+        <span>Vibration</span>
+        <input type="checkbox" class="toggle" id="vibToggle">
+      </label>
+      <label class="row">
+        <span>Son</span>
+        <input type="checkbox" class="toggle" id="soundToggle">
+      </label>
+    </div>
+    <p class="note" id="vibNote" hidden>Sur iPhone : retour haptique léger (iOS 18 et plus).</p>
+
+    <button class="primary sheet-ok" id="closeSheet">OK</button>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>
