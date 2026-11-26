@@ -2,16 +2,12 @@
 //
 // Un orbe (le « hublot ») dont la taille et la marée suivent le souffle,
 // un ciel qui change avec l'heure (aube, jour, couchant, nuit), et une mer
-// qui déborde du cercle. De temps en temps : une étoile filante, une mouette,
-// et pendant les séances un voilier qui passe au loin.
+// qui déborde du cercle. Un voilier et une mouette passent sans cesse, l'un
+// après l'autre, et la nuit une étoile filante de temps en temps.
 //
-// API : Scene.draw(breath 0..1, tempsEnSecondes), Scene.setSky(mode),
-//       Scene.setSession(actif).
+// API : Scene.draw(breath 0..1, tempsEnSecondes), Scene.setSky(mode).
 //
-// Paramètres d'URL pour le développement :
-//   ?h=19    force l'heure (en mode Auto)
-//   ?boat    voilier et mouettes en boucle, tout de suite
-//   ?gulls   mouettes en boucle
+// Paramètre d'URL pour le développement : ?h=19 force l'heure (en mode Auto).
 (() => {
   'use strict';
 
@@ -24,8 +20,6 @@
 
   const params = new URLSearchParams(location.search);
   const FORCED_HOUR = params.has('h') && !isNaN(params.get('h')) ? ((Number(params.get('h')) % 24) + 24) % 24 : null;
-  const DEBUG_BOAT = params.has('boat');
-  const DEBUG_GULLS = DEBUG_BOAT || params.has('gulls');
 
   /* ================= Helpers ================= */
 
@@ -175,11 +169,14 @@
   ro.observe(canvas);
   ro.observe(anchor);
 
-  /* ================= Occasional visitors ================= */
+  /* ================= Visitors ================= */
   // Each visitor: { next: time of the next appearance, cur: the one on screen }.
   // Times are in real seconds (t), motion uses scene time (T, slowed if needed).
+  // The boat and the gull are always around: a new one sets off a few seconds
+  // after the last one leaves, and the very first is already on its way.
 
-  let inSession = false;
+  // Start time for a new crossing; `first` puts it already partway across.
+  const departure = (t, dur, first) => (first ? t - dur * between(0.25, 0.45) : t);
 
   // Shooting star — anywhere in the night sky.
   const shooting = { next: between(6, 16), cur: null };
@@ -220,18 +217,19 @@
     ctx.stroke();
   }
 
-  // Sailboat — during sessions only, riding the front wave.
-  const sailboat = { next: DEBUG_BOAT ? 1.5 : Infinity, cur: null };
+  // Sailboat — riding the front wave.
+  const sailboat = { next: -Infinity, cur: null, first: true };
 
   function updateBoat(t) {
     const b = sailboat;
-    const active = inSession || DEBUG_BOAT;
-    if (!b.cur && active && t > b.next) {
-      b.cur = { t0: t, dur: DEBUG_BOAT ? 22 : between(45, 75), dir: eitherWay(), size: between(0.85, 1.15) };
+    if (!b.cur && t > b.next) {
+      const dur = between(45, 75);
+      b.cur = { t0: departure(t, dur, b.first), dur, dir: eitherWay(), size: between(0.85, 1.15) };
+      b.first = false;
     }
     if (b.cur && t - b.cur.t0 > b.cur.dur) {
       b.cur = null;
-      b.next = active ? t + (DEBUG_BOAT ? 1.5 : between(15, 40)) : Infinity;
+      b.next = t + between(1, 3);
     }
   }
 
@@ -240,11 +238,11 @@
     const b = sailboat.cur;
     if (!b) return;
     const k = (t - b.t0) / b.dur;
-    const x = cx + b.dir * (-1.15 + 2.3 * k) * R;
+    const x = cx + b.dir * (-1.08 + 2.16 * k) * R;
     const L = R * 0.11 * b.size;
     const slope = (wave(x + 3) - wave(x - 3)) / 6;
     const y = wave(x) + L * 0.1 + Math.sin(T * 1.3) * L * 0.03;
-    const fade = Math.min(1, k * 8, (1 - k) * 8);
+    const fade = Math.min(1, k * 20, (1 - k) * 20);
 
     // Daylight: white sails. Sunset: dark silhouette. Night: moonlit sails.
     const pale = Math.max(clamp((p.rays - 0.3) / 0.7, 0, 1), p.stars * 0.55);
@@ -294,15 +292,15 @@
     if (p.stars > 0.3) glow(x, y - 1.12 * L, 0, L * 0.35, [255, 210, 150], 0.7 * p.stars * fade);  // masthead light
   }
 
-  // Seagull — one at a time crossing the orb, not at night.
-  const seagull = { next: DEBUG_GULLS ? 2 : between(8, 28), cur: null };
+  // Seagull — one at a time crossing the orb.
+  const seagull = { next: -Infinity, cur: null, first: true };
 
-  function updateGull(t, p) {
+  function updateGull(t) {
     const g = seagull;
     if (!g.cur && t > g.next) {
-      if (p.stars > 0.6) { g.next = t + 30; return; }   // gulls sleep at night
+      const dur = between(11, 17);
       g.cur = {
-        t0: t, dur: between(11, 17), dir: eitherWay(),
+        t0: departure(t, dur, g.first), dur, dir: eitherWay(),
         alt: between(0.42, 0.62), size: between(0.8, 1.15), ph: Math.random() * TAU, flapSpd: between(5, 7.5),
         // Flight path: a slow climb or dive, a looser undulation, uneven speed
         arc: between(-0.2, 0.2), arcF: between(0.6, 1.4),
@@ -310,40 +308,43 @@
         surge: between(0.03, 0.06),
       };
     }
+    if (g.cur) g.first = false;
     if (g.cur && t - g.cur.t0 > g.cur.dur) {
       g.cur = null;
-      g.next = t + (DEBUG_GULLS ? 2 : between(15, 50));
+      g.next = t + between(1, 3);
     }
   }
 
-  function drawGull(t, T, p, cx, level) {
+  function drawGull(t, T, p, cx, cy, R, level) {
     const G = seagull.cur;
     if (!G) return;
     const path = (k) => {
       const kk = k + G.surge * Math.sin(k * TAU * 1.3 + G.ph);
       return [
-        cx + G.dir * (-1.15 + 2.3 * kk) * orbMax,
-        ocy - orbMax * (G.alt + G.arc * Math.sin(k * Math.PI * G.arcF + G.ph * 0.3) + G.wob * Math.sin(k * TAU * G.wobF + G.ph)),
+        cx + G.dir * (-1.12 + 2.24 * kk) * R,
+        cy - R * (G.alt + G.arc * Math.sin(k * Math.PI * G.arcF + G.ph * 0.3) + G.wob * Math.sin(k * TAU * G.wobF + G.ph)),
       ];
     };
     const k = (t - G.t0) / G.dur;
-    const size = orbMax * 0.05 * G.size;
+    const size = R * 0.055 * G.size;
     const glide = 0.35 + 0.65 * Math.max(0, Math.sin(T * 0.45 + G.ph));   // stretches of gliding
     const flap = Math.sin(T * G.flapSpd + G.ph) * glide;
 
     let [x, y] = path(k);
     const [x2, y2] = path(k + 0.01);
     y += -flap * size * 0.18 + Math.sin(T * 0.8 + G.ph) * size * 0.15;     // wing beats lift the body
-    y = Math.min(y, level - orbMax * 0.16);                                // stay above the tide
+    y = Math.min(y, level - R * 0.16);                                     // stay above the tide
     const bank = clamp(Math.atan2(y2 - y, Math.abs(x2 - x) + 1e-6) * 0.6, -0.35, 0.35) * G.dir;
 
     const tip = size * (0.05 + 0.4 * flap);
     const arch = size * (0.42 + 0.2 * flap);
-    const col = mix(mix(p.skyT, [0, 0, 0], 0.45), [70, 80, 95], clamp((p.rays - 0.3) / 0.7, 0, 1));
+    // Dark silhouette by day and at sunset, moonlit grey at night
+    const dusk = mix(mix(p.skyT, [0, 0, 0], 0.45), [70, 80, 95], clamp((p.rays - 0.3) / 0.7, 0, 1));
+    const col = mix(dusk, [200, 210, 228], p.stars * 0.8);
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(bank);
-    ctx.strokeStyle = rgba(col, 0.85 * (1 - p.stars));
+    ctx.strokeStyle = rgba(col, 0.85);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.lineWidth = Math.max(1.1, size * 0.15);
@@ -575,7 +576,7 @@
 
     updateShooting(t, p, level);
     updateBoat(t);
-    updateGull(t, p);
+    updateGull(t);
 
     drawSurroundings(t, T, p, cx, cy, R, level, light);
 
@@ -594,7 +595,7 @@
     drawStars(p, T, level);
     drawClouds(p, T, cx, cy, R);
     drawSun(p, light, R);
-    drawGull(t, T, p, cx, level);
+    drawGull(t, T, p, cx, cy, R, level);
     const front = drawWaves(T, p, cx, cy, R, level);
     drawUnderwaterLight(T, p, cx, cy, R, front, light);
     drawFoam(T, p, cx, R, front, breath);
@@ -621,14 +622,6 @@
     setSky(mode) {
       skyMode = mode;
       paletteStale = true;
-    },
-
-    // The sailboat only passes during a session, at a random moment.
-    setSession(active) {
-      if (active === inSession) return;
-      inSession = active;
-      if (active && !sailboat.cur) sailboat.next = performance.now() / 1000 + between(4, 10);   // first one soon
-      if (!active && !DEBUG_BOAT) sailboat.next = Infinity;
     },
   };
 })();

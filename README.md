@@ -9,7 +9,7 @@ Cohérence cardiaque, simplement. Une webapp installable : une mer abstraite dan
 - **Une séance guidée** : compte à rebours, « Inspirez / Expirez », temps restant, anneau de progression. La séance se termine toujours sur une respiration complète.
 - **Une scène vivante** : l'orbe grossit et la marée monte à l'inspiration. Cinq couches de vagues, de l'écume, le reflet du soleil ou de la lune, des rayons sous l'eau le jour, du plancton lumineux la nuit.
 - **Un ciel qui suit l'heure** : aube, jour, couchant, nuit étoilée, avec des transitions continues. On peut aussi forcer l'ambiance dans les réglages.
-- **Des visiteurs au hasard** : une étoile filante la nuit, une mouette de temps en temps, et pendant la séance un voilier qui passe au loin.
+- **Des visiteurs** : un voilier et une mouette traversent sans cesse l'horizon, l'un après l'autre, et la nuit une étoile filante passe de temps en temps.
 - **Vibrations** : une impulsion à l'inspiration, deux à l'expiration, et un motif en fin de séance. Sur Android, c'est l'API Vibration. Sur iPhone (iOS 18 et plus), c'est un léger retour haptique système.
 - **Son optionnel** : un ressac doux et une nappe chaude, générés en direct, qui suivent la respiration.
 - L'écran reste allumé pendant la séance. L'app fonctionne hors ligne et compte tes séances du jour.
@@ -31,13 +31,11 @@ Pas de dépendance ni de build : HTML, CSS et JavaScript, rien d'autre.
 uv run python -m http.server 8000    # → http://localhost:8000
 ```
 
-Paramètres d'URL utiles pour tester :
+Paramètre d'URL utile pour tester :
 
 | Paramètre | Effet |
 | --- | --- |
 | `?h=19` | force l'heure du ciel (en mode Auto) : `7` aube, `13` jour, `19` couchant, `23` nuit |
-| `?boat` | le voilier et les mouettes passent en boucle, sans attendre |
-| `?gulls` | seulement les mouettes, en boucle |
 
 ### Organisation
 
