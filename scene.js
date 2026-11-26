@@ -186,7 +186,7 @@
     const x = cx + boat.dir * (-1.15 + 2.3 * k) * R;
     const L = R * 0.11 * boat.size;
     const slope = (f(x + 3) - f(x - 3)) / 6;
-    const y = f(x) + L * 0.06 + Math.sin(T * 1.3) * L * 0.03;
+    const y = f(x) + L * 0.1 + Math.sin(T * 1.3) * L * 0.03;
     const fadeIn = Math.min(1, k * 8, (1 - k) * 8);
 
     // Daylight: white sails. Sunset: dark silhouette. Night: moonlit sails.
@@ -196,7 +196,7 @@
 
     ctx.save();
     ctx.translate(x, y);
-    ctx.rotate(Math.atan(slope) * 0.7 + Math.sin(T * 0.9) * 0.03);
+    ctx.rotate(Math.atan(slope) * 0.4 + Math.sin(T * 0.9) * 0.03);
     ctx.scale(boat.dir * L, L);
     ctx.globalAlpha = fadeIn * 0.92;
 
@@ -240,6 +240,65 @@
       glow(mx, my, 0, L * 0.35, [255, 210, 150], 0.7 * p.stars * fadeIn);
     }
     ctx.restore();
+  }
+
+  /* ---------- Seagulls ---------- */
+
+  const DEBUG_GULLS = DEBUG_BOAT || new URLSearchParams(location.search).has('gulls');
+  let flock = null;
+  let nextFlock = DEBUG_GULLS ? 2 : Infinity;
+
+  function scheduleFlock(T) {
+    nextFlock = T + (DEBUG_GULLS ? 3 : 20 + Math.random() * 50);
+  }
+
+  function updateGulls(T, p) {
+    if (nextFlock === -1) scheduleFlock(T);
+    if (!flock && (sailing || DEBUG_GULLS) && T > nextFlock) {
+      if (p.stars > 0.6) { scheduleFlock(T); return; }   // gulls sleep at night
+      const n = 2 + Math.floor(Math.random() * 3);
+      flock = {
+        t0: T, dur: DEBUG_GULLS ? 16 : 24 + Math.random() * 16, dir: Math.random() < 0.5 ? 1 : -1,
+        alt: 0.4 + Math.random() * 0.2,
+        birds: Array.from({ length: n }, (_, i) => ({
+          dx: i * 0.28 + Math.random() * 0.12, dy: (Math.random() - 0.5) * 0.22,
+          size: 0.7 + Math.random() * 0.45, ph: Math.random() * TAU, fspd: 5 + Math.random() * 2.5,
+        })),
+      };
+    }
+    if (flock && T - flock.t0 > flock.dur) {
+      flock = null;
+      if (sailing || DEBUG_GULLS) scheduleFlock(T);
+    }
+  }
+
+  function drawGulls(T, p, inside, level) {
+    if (!flock) return;
+    const k = (T - flock.t0) / flock.dur;
+    const day = 1 - p.stars;
+    const col = inside ? mix(mix(p.skyT, [0, 0, 0], 0.45), [70, 80, 95], Math.max(0, (p.rays - 0.3) / 0.7)) : [225, 230, 240];
+    ctx.strokeStyle = rgba(col, (inside ? 0.85 : 0.5) * day);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const b of flock.birds) {
+      const travel = -0.15 * W + k * 1.3 * W - b.dx * orbMax;
+      const x = flock.dir > 0 ? travel : W - travel;
+      // Fly above the tide: rise a little when the water comes up
+      const y = Math.min(ocy - orbMax * (flock.alt + b.dy), level - orbMax * (0.14 + b.dy * 0.5)) +
+        Math.sin(T * 0.5 + b.ph) * orbMax * 0.03;
+      const g = orbMax * 0.05 * b.size;
+      // Flap, with moments of gliding
+      const glide = 0.35 + 0.65 * Math.max(0, Math.sin(T * 0.45 + b.ph));
+      const flap = Math.sin(T * b.fspd + b.ph) * glide;
+      const tip = g * (0.05 + 0.4 * flap);
+      const arch = g * (0.42 + 0.2 * flap);
+      ctx.lineWidth = Math.max(1.1, g * 0.15);
+      ctx.beginPath();
+      ctx.moveTo(x - g, y + tip);
+      ctx.quadraticCurveTo(x - g * 0.45, y - arch, x, y);
+      ctx.quadraticCurveTo(x + g * 0.45, y - arch, x + g, y + tip);
+      ctx.stroke();
+    }
   }
 
   /* ---------- Shooting stars (state) ---------- */
@@ -333,6 +392,7 @@
     const ly = cy - R * (0.12 + 0.72 * p.alt);
     const lightAmt = p.sun + 0.6 * p.moon;
     updateBoat(T);
+    updateGulls(T, p);
 
     // Background and ambient light spilling beyond the orb
     ctx.globalCompositeOperation = 'source-over';
@@ -348,6 +408,7 @@
     drawStars(p, T, level, 1);
     drawShootingStar(T, p, level);
     glow(lx, ly, 0, R * 1.5, p.light, 0.13 * lightAmt);
+    drawGulls(T, p, false, level);
 
     // The sea continuing beyond the porthole: ghost swells fading to the edges
     {
@@ -411,6 +472,8 @@
       ctx.fill();
     }
 
+    drawGulls(T, p, true, level);
+
     // Waves, back to front, with atmospheric haze on distant layers
     const step = Math.max(2, R / 70);
     let front = null;
@@ -434,7 +497,6 @@
       ctx.strokeStyle = rgba(p.light, 0.06 + 0.1 * w.depth);
       ctx.lineWidth = 1;
       ctx.stroke();
-      if (i === 0) drawBoat(p, T, f, cx, R);
       if (i === WAVES.length - 1) front = f;
     });
 
@@ -511,6 +573,8 @@
     ctx.lineWidth = 1;
     ctx.stroke();
 
+    drawBoat(p, T, front, cx, R);
+
     // Glassy sheen
     g = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.45, 0, cx - R * 0.35, cy - R * 0.45, R);
     g.addColorStop(0, 'rgba(255,255,255,0.07)');
@@ -534,6 +598,7 @@
       if (on === sailing) return;
       sailing = on;
       if (on && !boat) nextBoat = -1;   // scheduled on the next frame, in scene time
+      if (on && !flock) nextFlock = -1;
     },
     setSky(mode) {
       skyMode = mode;
