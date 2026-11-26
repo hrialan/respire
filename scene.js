@@ -242,63 +242,49 @@
     ctx.restore();
   }
 
-  /* ---------- Seagulls ---------- */
+  /* ---------- A seagull, now and then ---------- */
+  // One bird at a time crossing the porthole, at random, like the shooting stars.
 
   const DEBUG_GULLS = DEBUG_BOAT || new URLSearchParams(location.search).has('gulls');
-  let flock = null;
-  let nextFlock = DEBUG_GULLS ? 2 : Infinity;
+  let gull = null;
+  let nextGull = DEBUG_GULLS ? 2 : 8 + Math.random() * 20;
 
-  function scheduleFlock(T) {
-    nextFlock = T + (DEBUG_GULLS ? 3 : 20 + Math.random() * 50);
-  }
-
-  function updateGulls(T, p) {
-    if (nextFlock === -1) scheduleFlock(T);
-    if (!flock && (sailing || DEBUG_GULLS) && T > nextFlock) {
-      if (p.stars > 0.6) { scheduleFlock(T); return; }   // gulls sleep at night
-      const n = 2 + Math.floor(Math.random() * 3);
-      flock = {
-        t0: T, dur: DEBUG_GULLS ? 16 : 24 + Math.random() * 16, dir: Math.random() < 0.5 ? 1 : -1,
-        alt: 0.4 + Math.random() * 0.2,
-        birds: Array.from({ length: n }, (_, i) => ({
-          dx: i * 0.28 + Math.random() * 0.12, dy: (Math.random() - 0.5) * 0.22,
-          size: 0.7 + Math.random() * 0.45, ph: Math.random() * TAU, fspd: 5 + Math.random() * 2.5,
-        })),
+  function updateGull(T, p) {
+    if (!gull && T > nextGull) {
+      if (p.stars > 0.6) { nextGull = T + 30; return; }   // gulls sleep at night
+      gull = {
+        t0: T, dur: 11 + Math.random() * 6, dir: Math.random() < 0.5 ? 1 : -1,
+        alt: 0.42 + Math.random() * 0.2, size: 0.8 + Math.random() * 0.35,
+        ph: Math.random() * TAU, fspd: 5 + Math.random() * 2.5,
       };
     }
-    if (flock && T - flock.t0 > flock.dur) {
-      flock = null;
-      if (sailing || DEBUG_GULLS) scheduleFlock(T);
+    if (gull && T - gull.t0 > gull.dur) {
+      gull = null;
+      nextGull = T + (DEBUG_GULLS ? 2 : 15 + Math.random() * 35);
     }
   }
 
-  function drawGulls(T, p, inside, level) {
-    if (!flock) return;
-    const k = (T - flock.t0) / flock.dur;
-    const day = 1 - p.stars;
-    const col = inside ? mix(mix(p.skyT, [0, 0, 0], 0.45), [70, 80, 95], Math.max(0, (p.rays - 0.3) / 0.7)) : [225, 230, 240];
-    ctx.strokeStyle = rgba(col, (inside ? 0.85 : 0.5) * day);
+  function drawGull(T, p, cx, level) {
+    if (!gull) return;
+    const k = (T - gull.t0) / gull.dur;
+    const x = cx + gull.dir * (-1.15 + 2.3 * k) * orbMax;
+    // Fly above the tide: rise a little when the water comes up
+    const y = Math.min(ocy - orbMax * gull.alt, level - orbMax * 0.16) + Math.sin(T * 0.5 + gull.ph) * orbMax * 0.03;
+    const g = orbMax * 0.05 * gull.size;
+    const glide = 0.35 + 0.65 * Math.max(0, Math.sin(T * 0.45 + gull.ph));
+    const flap = Math.sin(T * gull.fspd + gull.ph) * glide;
+    const tip = g * (0.05 + 0.4 * flap);
+    const arch = g * (0.42 + 0.2 * flap);
+    const col = mix(mix(p.skyT, [0, 0, 0], 0.45), [70, 80, 95], Math.max(0, (p.rays - 0.3) / 0.7));
+    ctx.strokeStyle = rgba(col, 0.85 * (1 - p.stars));
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    for (const b of flock.birds) {
-      const travel = -0.15 * W + k * 1.3 * W - b.dx * orbMax;
-      const x = flock.dir > 0 ? travel : W - travel;
-      // Fly above the tide: rise a little when the water comes up
-      const y = Math.min(ocy - orbMax * (flock.alt + b.dy), level - orbMax * (0.14 + b.dy * 0.5)) +
-        Math.sin(T * 0.5 + b.ph) * orbMax * 0.03;
-      const g = orbMax * 0.05 * b.size;
-      // Flap, with moments of gliding
-      const glide = 0.35 + 0.65 * Math.max(0, Math.sin(T * 0.45 + b.ph));
-      const flap = Math.sin(T * b.fspd + b.ph) * glide;
-      const tip = g * (0.05 + 0.4 * flap);
-      const arch = g * (0.42 + 0.2 * flap);
-      ctx.lineWidth = Math.max(1.1, g * 0.15);
-      ctx.beginPath();
-      ctx.moveTo(x - g, y + tip);
-      ctx.quadraticCurveTo(x - g * 0.45, y - arch, x, y);
-      ctx.quadraticCurveTo(x + g * 0.45, y - arch, x + g, y + tip);
-      ctx.stroke();
-    }
+    ctx.lineWidth = Math.max(1.1, g * 0.15);
+    ctx.beginPath();
+    ctx.moveTo(x - g, y + tip);
+    ctx.quadraticCurveTo(x - g * 0.45, y - arch, x, y);
+    ctx.quadraticCurveTo(x + g * 0.45, y - arch, x + g, y + tip);
+    ctx.stroke();
   }
 
   /* ---------- Shooting stars (state) ---------- */
@@ -392,7 +378,7 @@
     const ly = cy - R * (0.12 + 0.72 * p.alt);
     const lightAmt = p.sun + 0.6 * p.moon;
     updateBoat(T);
-    updateGulls(T, p);
+    updateGull(T, p);
 
     // Background and ambient light spilling beyond the orb
     ctx.globalCompositeOperation = 'source-over';
@@ -408,7 +394,6 @@
     drawStars(p, T, level, 1);
     drawShootingStar(T, p, level);
     glow(lx, ly, 0, R * 1.5, p.light, 0.13 * lightAmt);
-    drawGulls(T, p, false, level);
 
     // The sea continuing beyond the porthole: ghost swells fading to the edges
     {
@@ -472,7 +457,7 @@
       ctx.fill();
     }
 
-    drawGulls(T, p, true, level);
+    drawGull(T, p, cx, level);
 
     // Waves, back to front, with atmospheric haze on distant layers
     const step = Math.max(2, R / 70);
@@ -598,7 +583,6 @@
       if (on === sailing) return;
       sailing = on;
       if (on && !boat) nextBoat = -1;   // scheduled on the next frame, in scene time
-      if (on && !flock) nextFlock = -1;
     },
     setSky(mode) {
       skyMode = mode;
