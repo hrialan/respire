@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <canvas class="sea" id="sea" aria-hidden="true"></canvas>
   <main id="app" data-state="home">
     <header class="top">
       <button id="settingsBtn" class="icon-btn only-home" aria-label="Réglages">
@@ -28,12 +29,11 @@
     </header>
 
     <section class="stage" id="stage">
-      <div class="flower-wrap">
+      <div class="orb-wrap" id="orbAnchor">
         <svg class="ring" viewBox="0 0 100 100" aria-hidden="true">
           <circle class="ring-track" cx="50" cy="50" r="48" pathLength="1"/>
           <circle class="ring-progress" id="ringProgress" cx="50" cy="50" r="48" pathLength="1"/>
         </svg>
-        <canvas class="sea" id="sea"></canvas>
       </div>
     </section>
 
@@ -87,6 +87,17 @@
       <p class="note" id="rhythmNote"></p>
     </div>
 
+    <div class="group">
+      <div class="group-label">Ciel</div>
+      <div class="seg" data-key="sky">
+        <button data-v="auto">Auto</button>
+        <button data-v="day">Jour</button>
+        <button data-v="sunset">Couchant</button>
+        <button data-v="night">Nuit</button>
+      </div>
+      <p class="note">Auto suit l’heure de la journée.</p>
+    </div>
+
     <div class="list">
       <label class="row">
         <span>Vibration</span>
@@ -102,6 +113,7 @@
     <button class="primary sheet-ok" id="closeSheet">OK</button>
   </aside>
 
+  <script src="scene.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

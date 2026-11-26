@@ -3,8 +3,6 @@
 
   const $ = (id) => document.getElementById(id);
   const app = $('app');
-  const sea = $('sea');
-  const ctx = sea.getContext('2d');
   const ringProgress = $('ringProgress');
   const phaseEl = $('phase');
   const subEl = $('sub');
@@ -15,7 +13,7 @@
 
   const SETTINGS_KEY = 'respire.settings';
   const STATS_KEY = 'respire.stats';
-  const DEFAULTS = { duration: 5, rhythm: '5-5', inhale: 5, exhale: 5, vibration: true, sound: false };
+  const DEFAULTS = { duration: 5, rhythm: '5-5', inhale: 5, exhale: 5, vibration: true, sound: false, sky: 'auto' };
 
   const store = {
     get(key, fallback) {
@@ -138,27 +136,59 @@
     return noiseBuf;
   }
 
+  // Warm, open pad under the surf (A2 E3 B3 C#4 E4), each note doubled and
+  // slightly detuned for a slow, soft shimmer.
+  const PAD_NOTES = [110, 164.81, 246.94, 277.18, 329.63];
+
   function createSurf() {
+    const t = actx.currentTime;
+    const out = actx.createGain();
+    out.gain.setValueAtTime(0, t);
+    out.gain.setTargetAtTime(1, t, 0.8);
+    out.connect(master);
+
     const src = actx.createBufferSource();
     src.buffer = pinkNoise();
     src.loop = true;
     src.loopEnd = noiseBuf.duration - 0.5;
-    const lp = actx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.Q.value = 0.4;
-    lp.frequency.value = 200;
     const hp = actx.createBiquadFilter();
     hp.type = 'highpass';
-    hp.frequency.value = 60;
-    const gain = actx.createGain();
-    gain.gain.value = 0;
-    src.connect(hp).connect(lp).connect(gain).connect(master);
+    hp.frequency.value = 70;
+    const lp = actx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.Q.value = 0.3;
+    lp.frequency.value = surfFreq(0);
+    const sg = actx.createGain();
+    sg.gain.value = 0;
+    src.connect(hp).connect(lp).connect(sg).connect(out);
     src.start();
-    return { src, lp, gain };
+
+    const padLp = actx.createBiquadFilter();
+    padLp.type = 'lowpass';
+    padLp.frequency.value = 700;
+    const pg = actx.createGain();
+    pg.gain.value = 0;
+    padLp.connect(pg).connect(out);
+    const oscs = [];
+    PAD_NOTES.forEach((f, i) => {
+      [-0.35, 0.35].forEach((dt) => {
+        const o = actx.createOscillator();
+        o.type = 'sine';
+        o.frequency.value = f + dt;
+        const g = actx.createGain();
+        g.gain.value = 0.5 / (i + 1.5);
+        o.connect(g).connect(padLp);
+        o.start();
+        oscs.push(o);
+      });
+    });
+    return { src, lp, sg, pg, out, oscs };
   }
 
-  const surfFreq = (s) => 180 + 1500 * s * s;
-  const surfGain = (s) => 0.03 + 0.3 * s;
+  // Deliberately narrow ranges: the surf breathes, it never crashes.
+  function surfFreq(s) { return 220 + 650 * s; }
+  function surfGain(s) { return 0.06 + 0.13 * s; }
+  function padGain(s) { return 0.022 + 0.012 * s; }
 
   function startSurf() {
     if (!settings.sound) return;
@@ -169,141 +199,43 @@
   function updateSurf(s, on = true) {
     if (!surf) return;
     const t = actx.currentTime;
-    surf.lp.frequency.setTargetAtTime(surfFreq(s), t, 0.06);
-    surf.gain.gain.setTargetAtTime(on ? surfGain(s) : 0, t, on ? 0.06 : 0.35);
+    const tc = on ? 0.25 : 0.5;
+    surf.lp.frequency.setTargetAtTime(surfFreq(s), t, 0.25);
+    surf.sg.gain.setTargetAtTime(on ? surfGain(s) : 0, t, tc);
+    surf.pg.gain.setTargetAtTime(on ? padGain(s) : 0, t, tc);
+  }
+
+  function stopNodes(n, fade) {
+    const t = actx.currentTime;
+    n.out.gain.cancelScheduledValues(t);
+    n.out.gain.setTargetAtTime(0, t, fade / 4);
+    n.src.stop(t + fade + 0.3);
+    n.oscs.forEach((o) => o.stop(t + fade + 0.3));
   }
 
   function stopSurf(fade = 1.2) {
     if (!surf) return;
-    const { src, lp, gain } = surf;
+    stopNodes(surf, fade);
     surf = null;
-    const t = actx.currentTime;
-    gain.gain.cancelScheduledValues(t);
-    gain.gain.setTargetAtTime(0, t, fade / 4);
-    lp.frequency.setTargetAtTime(150, t, fade / 3);
-    src.stop(t + fade + 0.3);
   }
 
-  // One wave rolling in and out, to preview the sound in settings.
+  // One slow wave in and out, to preview the sound in settings.
   function previewSurf() {
     unlockAudio();
     if (!actx) return;
-    const w = createSurf();
+    const n = createSurf();
     const t = actx.currentTime;
-    w.gain.gain.setValueAtTime(0, t);
-    w.gain.gain.linearRampToValueAtTime(surfGain(1), t + 1.8);
-    w.gain.gain.linearRampToValueAtTime(0, t + 4);
-    w.lp.frequency.setValueAtTime(surfFreq(0), t);
-    w.lp.frequency.exponentialRampToValueAtTime(surfFreq(1), t + 1.8);
-    w.lp.frequency.exponentialRampToValueAtTime(surfFreq(0), t + 4);
-    w.src.stop(t + 4.2);
+    n.pg.gain.setTargetAtTime(padGain(0.5), t, 0.5);
+    n.sg.gain.setValueAtTime(surfGain(0), t);
+    n.sg.gain.linearRampToValueAtTime(surfGain(1), t + 2.2);
+    n.sg.gain.linearRampToValueAtTime(surfGain(0), t + 4.5);
+    n.lp.frequency.setValueAtTime(surfFreq(0), t);
+    n.lp.frequency.linearRampToValueAtTime(surfFreq(1), t + 2.2);
+    n.lp.frequency.linearRampToValueAtTime(surfFreq(0), t + 4.5);
+    setTimeout(() => stopNodes(n, 1.5), 4500);
   }
 
   const cue = haptic;
-
-  /* ---------- Sea rendering ---------- */
-
-  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let W = 0;
-  let H = 0;
-
-  function resize() {
-    const r = sea.getBoundingClientRect();
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    W = r.width;
-    H = r.height;
-    sea.width = Math.round(W * dpr);
-    sea.height = Math.round(H * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-  new ResizeObserver(resize).observe(sea);
-
-  // Back to front. off: height offset (×R), amp: amplitude (×R), k: waves across, spd: rad/s
-  const WAVES = [
-    { off: -0.09, amp: 0.06, k: 1.2, spd: 0.4, top: [45, 115, 170, 0.5], bot: [4, 18, 40, 0.85] },
-    { off: -0.03, amp: 0.055, k: 1.8, spd: -0.55, top: [55, 150, 200, 0.55], bot: [4, 22, 48, 0.9] },
-    { off: 0.03, amp: 0.045, k: 2.5, spd: 0.75, top: [95, 195, 225, 0.6], bot: [3, 16, 36, 0.96] },
-  ];
-  const rgba = (c, a = c[3]) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
-
-  function drawSea(s, t) {
-    if (!W) return;
-    const tt = reduceMotion ? t * 0.25 : t;
-    ctx.clearRect(0, 0, W, H);
-    const cx = W / 2;
-    const cy = H / 2;
-    const R = (W / 3) * (0.6 + 0.4 * s);   // canvas is 150% of the stage box
-    const TAU = Math.PI * 2;
-
-    // Halo
-    let g = ctx.createRadialGradient(cx, cy, R * 0.7, cx, cy, R * 1.5);
-    g.addColorStop(0, `rgba(70,170,215,${0.14 + 0.2 * s})`);
-    g.addColorStop(1, 'rgba(70,170,215,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(cx, cy, R * 1.5, 0, TAU);
-    ctx.fill();
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, TAU);
-    ctx.clip();
-
-    // Night sky inside the orb
-    g = ctx.createLinearGradient(0, cy - R, 0, cy + R);
-    g.addColorStop(0, '#071423');
-    g.addColorStop(1, '#0c2639');
-    ctx.fillStyle = g;
-    ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R);
-
-    // Tide: water surface rises with the breath
-    const level = cy + R - (0.2 + 0.62 * s) * 2 * R;
-    const step = Math.max(2, R / 60);
-
-    WAVES.forEach((w, i) => {
-      const surface = (x) => {
-        const u = (x - cx) / R;
-        return level + w.off * R + w.amp * R * (
-          0.65 * Math.sin(u * w.k * Math.PI + tt * w.spd + i * 1.7) +
-          0.35 * Math.sin(u * w.k * 2.3 * Math.PI - tt * w.spd * 1.4 + i)
-        );
-      };
-      ctx.beginPath();
-      ctx.moveTo(cx - R, cy + R);
-      for (let x = cx - R; x <= cx + R + step; x += step) ctx.lineTo(x, surface(x));
-      ctx.lineTo(cx + R, cy + R);
-      ctx.closePath();
-      g = ctx.createLinearGradient(0, level - R * 0.1, 0, level + R * 1.1);
-      g.addColorStop(0, rgba(w.top));
-      g.addColorStop(1, rgba(w.bot));
-      ctx.fillStyle = g;
-      ctx.fill();
-
-      if (i === WAVES.length - 1) {
-        // Foam on the front crest
-        ctx.beginPath();
-        for (let x = cx - R; x <= cx + R + step; x += step) ctx.lineTo(x, surface(x));
-        ctx.strokeStyle = `rgba(215,245,255,${0.35 + 0.25 * s})`;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      }
-    });
-
-    // Glassy sheen
-    g = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.45, 0, cx - R * 0.35, cy - R * 0.45, R * 0.9);
-    g.addColorStop(0, 'rgba(255,255,255,0.08)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R);
-    ctx.restore();
-
-    // Rim
-    ctx.beginPath();
-    ctx.arc(cx, cy, R - 0.5, 0, TAU);
-    ctx.strokeStyle = `rgba(160,225,245,${0.1 + 0.12 * s})`;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  }
 
   /* ---------- Wake lock ---------- */
 
@@ -478,7 +410,7 @@
 
     if (target !== null) vis += (target - vis) * (1 - Math.exp(-dt / 350));
     if (state === 'countdown') updateSurf(vis);
-    drawSea(vis, now / 1000);
+    Scene.draw(vis, now / 1000);
     requestAnimationFrame(frame);
   }
 
@@ -532,6 +464,7 @@
       settings[key] = key === 'duration' ? Number(b.dataset.v) : b.dataset.v;
       save();
       renderSettings();
+      if (key === 'sky') Scene.setSky(settings.sky);
       haptic('tap');
     });
   });
@@ -591,6 +524,7 @@
 
   /* ---------- Boot ---------- */
 
+  Scene.setSky(settings.sky);
   renderSettings();
   subEl.textContent = homeSummary();
   requestAnimationFrame(frame);

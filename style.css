@@ -98,21 +98,21 @@ p { margin: 0; }
 #app[data-state="running"] .stage,
 #app[data-state="paused"] .stage { cursor: pointer; }
 
-.flower-wrap {
+.orb-wrap {
   position: relative;
   width: min(68vmin, 360px, 48dvh);
   aspect-ratio: 1;
 }
 
 .sea {
-  position: absolute;
-  inset: -25%;
-  width: 150%;
-  height: 150%;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   transition: opacity 0.8s, filter 0.8s;
 }
-#app[data-state="paused"] .sea { opacity: 0.4; filter: saturate(0.5); }
+body:has(#app[data-state="paused"]) .sea { opacity: 0.4; filter: saturate(0.5); }
 
 .ring {
   position: absolute;
@@ -144,6 +144,7 @@ p { margin: 0; }
   padding: 8px 0 4px;
   min-height: 88px;
 }
+.caption { text-shadow: 0 1px 12px rgba(0, 0, 0, 0.5); }
 .phase {
   font-size: clamp(28px, 7.5vw, 36px);
   font-weight: 300;
@@ -355,12 +356,3 @@ input[type="range"]::-moz-range-thumb {
   .sheet { transition-duration: 0.01s; }
 }
 
-/* Faint deep-water glow rising from the bottom */
-#app::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: radial-gradient(120% 60% at 50% 110%, var(--deep) 0%, #000 70%);
-  pointer-events: none;
-}

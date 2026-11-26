@@ -4,8 +4,9 @@ Cohérence cardiaque, simplement. Une PWA minimaliste : fond noir, une mer abstr
 
 **→ https://hrialan.github.io/respire/**
 
+- Ciel qui suit l’heure : aube, jour, couchant, nuit étoilée (ou forcé dans les réglages)
 - Durée 3 / 5 / 10 / 15 min, rythme 5·5, 4·6, 4·4 ou personnalisé
-- Vibration (Android ; retour haptique léger sur iPhone, iOS 18+) et son de ressac synthétisé qui suit la respiration
+- Vibration (Android ; retour haptique léger sur iPhone, iOS 18+) et ambiance sonore douce (ressac + nappe) qui suit la respiration
 - L'écran reste allumé pendant la séance, fonctionne hors ligne
 - Toucher l'écran = pause · Espace = démarrer/pause · Échap = arrêter
 

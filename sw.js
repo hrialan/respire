@@ -1,9 +1,10 @@
 // Stale-while-revalidate: instant offline start, updates picked up on next launch.
-const CACHE = 'respire-v2';
+const CACHE = 'respire-v3';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
+  './scene.js',
   './app.js',
   './manifest.webmanifest',
   './icons/icon.svg',
