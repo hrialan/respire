@@ -143,17 +143,18 @@
     const tc = playing ? 0.12 : 0.6;
     const gust = gustAt(t);
     const e = s * (0.75 + 0.5 * gust);   // energy: the breath, pushed by the gusts
+    const pitch = e * (1 - 0.35 * e);      // pitch rises less near the top: no shrill peak
     const on = playing ? 1 : 0;
     const set = (param, value, k = tc) => param.setTargetAtTime(value, t, k);
 
-    set(v.bodyLp.frequency, 160 + 260 * e, 0.15);
+    set(v.bodyLp.frequency, 160 + 220 * pitch, 0.3);
     set(v.body.gain, on * (0.1 + 0.12 * e));
 
-    set(v.breathBp.frequency, 380 + 1100 * e + 150 * gust, 0.12);
+    set(v.breathBp.frequency, 380 + 900 * pitch + 120 * gust, 0.3);
     set(v.breathG.gain, on * (0.04 + 0.2 * e));
 
-    set(v.whistleBp.frequency, 520 + 900 * e + 300 * gust, 0.15);
-    set(v.whistleG.gain, on * 0.11 * Math.pow(e, 1.6));
+    set(v.whistleBp.frequency, 480 + 600 * pitch + 180 * gust, 0.4);
+    set(v.whistleG.gain, on * 0.07 * Math.pow(e, 1.8));
 
     if (v.breathPan.pan) {
       set(v.breathPan.pan, 0.35 * Math.sin(t * 0.07), 0.5);
