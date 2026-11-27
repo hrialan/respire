@@ -6,7 +6,7 @@
 // Offline, or if the network takes more than 3 s, the cached copy is served.
 //
 // When adding a file to the app, list it in ASSETS and bump CACHE.
-const CACHE = 'respire-v7';
+const CACHE = 'respire-v8';
 const ASSETS = [
   './',
   './index.html',

@@ -144,6 +144,9 @@
     paletteStale = false;
     paletteTime = t;
     if (themeMeta) themeMeta.setAttribute('content', rgb(palette.bg));
+    // Page background matches the scene, so any strip the canvas does not
+    // reach (under Safari's bars, the home indicator) never shows as black.
+    document.documentElement.style.setProperty('--bg', rgb(palette.bg));
   }
 
   /* ================= Layout ================= */
@@ -160,14 +163,19 @@
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  const ro = new ResizeObserver(resize);
+  ro.observe(canvas);
+
+  // Read every frame: the anchor can move without changing size (the caption
+  // below it grows or shrinks), and then the orb must follow the ring.
+  function placeOrb() {
+    const r = canvas.getBoundingClientRect();
     const a = anchor.getBoundingClientRect();
     ocx = a.left + a.width / 2 - r.left;
     ocy = a.top + a.height / 2 - r.top;
     orbMax = a.width / 2;
   }
-  const ro = new ResizeObserver(resize);
-  ro.observe(canvas);
-  ro.observe(anchor);
 
   /* ================= Visitors ================= */
   // Each visitor: { next: time of the next appearance, cur: the one on screen }.
@@ -562,6 +570,7 @@
   // breath: 0 (empty lungs) .. 1 (full). t: seconds.
   function draw(breath, t) {
     if (!W) return;
+    placeOrb();
     breath = clamp(breath, 0, 1);
     refreshPalette(t);
     const p = palette;
