@@ -56,7 +56,7 @@ Paramètres d'URL utiles pour tester (ils se combinent : `?h=23&moment`) :
 | `audio.js` | son du vent en Web Audio : bruit rose filtré en plusieurs bandes (corps, souffle, sifflement) et nappe d'accords |
 | `sw.js` | service worker : réseau d’abord (toujours à jour en ligne), cache hors ligne |
 | `manifest.webmanifest` | métadonnées de la PWA |
-| `icons/` | icônes. Les PNG sont générés par `tools/make_icons.py`, le SVG est fait à la main |
+| `icons/` | icônes : le hublot-souffle (un hublot coupé par une vague, qui est aussi la courbe d'une respiration). Les PNG sont générés par `tools/make_icons.py`, le SVG est fait à la main avec les mêmes formes et couleurs |
 
 Le flux d'une image : `app.js` calcule à chaque frame le niveau du souffle (0 = poumons vides, 1 = pleins). Il le passe à `Scene.draw()` (taille de l'orbe, marée, et tout ce qui suit le souffle) et à `Ambience.update()` (force et timbre du vent). À la fin d'une séance, `app.js` appelle `Scene.celebrate()`.
 
