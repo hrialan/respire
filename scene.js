@@ -26,7 +26,8 @@
   /* ================= Helpers ================= */
 
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-  const mix = (a, b, k) => (Array.isArray(a) ? a.map((v, i) => v + (b[i] - v) * k) : a + (b - a) * k);
+  // Works on numbers, colours, and lists of colours.
+  const mix = (a, b, k) => (Array.isArray(a) ? a.map((v, i) => mix(v, b[i], k)) : a + (b - a) * k);
   const ch = (v) => Math.round(clamp(v, 0, 255));
   const rgb = (c) => `rgb(${ch(c[0])},${ch(c[1])},${ch(c[2])})`;
   const rgba = (c, a) => `rgba(${ch(c[0])},${ch(c[1])},${ch(c[2])},${clamp(a, 0, 1).toFixed(3)})`;
@@ -68,6 +69,11 @@
   const CLOUDS = Array.from({ length: 5 }, (_, i) => ({
     y: 0.25 + rand() * 0.5, ph: rand(), spd: 0.006 + rand() * 0.008, w: 0.45 + rand() * 0.4, puffs: 3 + (i % 3),
   }));
+  // Lights rising slowly around the porthole: sea spray, embers, fireflies.
+  const FIREFLIES = Array.from({ length: 42 }, (_, i) => ({
+    x: rand(), y: rand(), spd: 0.006 + rand() * 0.016, sway: rand() * TAU, swayAmp: 8 + rand() * 30,
+    r: 0.6 + rand() * rand() * 2.4, ph: rand() * TAU, tw: 0.6 + rand() * 1.6, c: i % 3,
+  }));
 
   // Back to front. off: height offset (×R), amp: amplitude (×R), k: waves across, spd: rad/s
   const WAVES = [
@@ -82,32 +88,43 @@
   // bg: page background · skyT/skyB: sky top/horizon · wT/wB: water top/deep
   // light: sun or moon colour · alt: its height (0..1) · sun/moon/stars/clouds/
   // rays/plankton: how present each element is (0..1) · motes: particle colour
+  // aura: three colours for the halo, the iridescent rim, the aurora and the
+  // floating lights · aurora/fire: how present those are · accent: UI colour
+  // btn: the button's fill, glow and outline strength (soft and glassy by day)
 
   const NIGHT = {
-    bg: [0, 0, 0], skyT: [3, 6, 18], skyB: [14, 26, 54], wT: [30, 72, 125], wB: [2, 8, 22],
-    glow: [80, 120, 210], light: [220, 230, 255], sun: 0, moon: 1, alt: 0.62, stars: 1, clouds: 0.12,
-    rays: 0, motes: [90, 210, 255], plankton: 1,
+    bg: [4, 6, 22], skyT: [5, 9, 32], skyB: [20, 38, 84], wT: [22, 86, 146], wB: [2, 10, 30],
+    glow: [70, 140, 235], light: [225, 235, 255], sun: 0, moon: 1, alt: 0.62, stars: 1, clouds: 0.12,
+    rays: 0, motes: [80, 230, 255], plankton: 1,
+    aura: [[60, 215, 255], [150, 110, 255], [70, 255, 190]], aurora: 1, fire: 1, accent: [140, 228, 255], btn: [0.16, 0.4, 0],
   };
   const DAWN = {
-    bg: [7, 5, 14], skyT: [28, 36, 82], skyB: [226, 140, 122], wT: [74, 96, 158], wB: [6, 14, 36],
-    glow: [255, 160, 130], light: [255, 196, 150], sun: 1, moon: 0, alt: 0.16, stars: 0.12, clouds: 0.55,
-    rays: 0.3, motes: [255, 205, 175], plankton: 0,
+    bg: [20, 12, 34], skyT: [54, 62, 134], skyB: [255, 172, 140], wT: [92, 134, 196], wB: [10, 22, 54],
+    glow: [255, 170, 150], light: [255, 206, 160], sun: 1, moon: 0, alt: 0.16, stars: 0.12, clouds: 0.55,
+    rays: 0.3, motes: [255, 212, 180], plankton: 0,
+    aura: [[255, 176, 150], [196, 160, 255], [255, 220, 168]], aurora: 0.1, fire: 0.55, accent: [255, 222, 214], btn: [0.09, 0.2, 0.2],
   };
   const DAY = {
-    bg: [3, 12, 24], skyT: [38, 112, 184], skyB: [160, 212, 238], wT: [48, 158, 206], wB: [5, 38, 78],
-    glow: [120, 200, 255], light: [255, 250, 232], sun: 1, moon: 0, alt: 0.78, stars: 0, clouds: 0.7,
-    rays: 1, motes: [225, 245, 255], plankton: 0,
+    bg: [4, 24, 46], skyT: [22, 118, 214], skyB: [150, 222, 246], wT: [18, 192, 212], wB: [4, 60, 112],
+    glow: [90, 210, 255], light: [255, 250, 230], sun: 1, moon: 0, alt: 0.78, stars: 0, clouds: 0.7,
+    rays: 1, motes: [235, 255, 255], plankton: 0,
+    aura: [[90, 228, 255], [120, 255, 214], [255, 238, 186]], aurora: 0, fire: 0.4, accent: [214, 246, 252], btn: [0.07, 0.14, 0.24],
   };
-  const AFTERNOON = { ...DAY, skyB: [178, 208, 226], alt: 0.55, light: [255, 238, 210] };
+  const AFTERNOON = {
+    ...DAY, skyB: [192, 222, 236], wT: [28, 176, 206], alt: 0.55, light: [255, 236, 200],
+    aura: [[110, 220, 255], [255, 218, 166], [140, 255, 220]],
+  };
   const SUNSET = {
-    bg: [12, 4, 16], skyT: [42, 40, 98], skyB: [255, 136, 88], wT: [112, 88, 140], wB: [10, 12, 36],
-    glow: [255, 128, 80], light: [255, 168, 98], sun: 1, moon: 0, alt: 0.14, stars: 0.08, clouds: 0.8,
-    rays: 0.3, motes: [255, 182, 140], plankton: 0,
+    bg: [26, 8, 32], skyT: [58, 40, 122], skyB: [255, 122, 92], wT: [150, 92, 152], wB: [16, 14, 50],
+    glow: [255, 122, 110], light: [255, 172, 92], sun: 1, moon: 0, alt: 0.14, stars: 0.08, clouds: 0.8,
+    rays: 0.3, motes: [255, 204, 152], plankton: 0,
+    aura: [[255, 118, 150], [255, 190, 92], [176, 112, 255]], aurora: 0, fire: 0.75, accent: [255, 214, 228], btn: [0.08, 0.18, 0.24],
   };
   const DUSK = {
-    bg: [4, 2, 12], skyT: [10, 12, 40], skyB: [86, 52, 116], wT: [42, 60, 122], wB: [3, 8, 26],
-    glow: [140, 100, 210], light: [232, 226, 255], sun: 0, moon: 0.65, alt: 0.34, stars: 0.6, clouds: 0.3,
-    rays: 0, motes: [140, 175, 255], plankton: 0.5,
+    bg: [12, 6, 30], skyT: [16, 16, 60], skyB: [122, 62, 152], wT: [52, 72, 154], wB: [4, 10, 36],
+    glow: [160, 100, 232], light: [235, 226, 255], sun: 0, moon: 0.65, alt: 0.34, stars: 0.6, clouds: 0.3,
+    rays: 0, motes: [150, 180, 255], plankton: 0.5,
+    aura: [[200, 120, 255], [90, 172, 255], [255, 130, 200]], aurora: 0.45, fire: 0.85, accent: [210, 196, 255], btn: [0.13, 0.32, 0.08],
   };
 
   const TIMELINE = [
@@ -148,7 +165,32 @@
     if (themeMeta) themeMeta.setAttribute('content', rgb(palette.bg));
     // Page background matches the scene, so any strip the canvas does not
     // reach (under Safari's bars, the home indicator) never shows as black.
-    document.documentElement.style.setProperty('--bg', rgb(palette.bg));
+    const root = document.documentElement.style;
+    root.setProperty('--bg', rgb(palette.bg));
+    // The button and the progress ring take the colour of the moment.
+    root.setProperty('--accent', rgb(palette.accent));
+    const [fill, shine, line] = palette.btn;
+    root.setProperty('--accent-bg', rgba(palette.accent, fill));
+    root.setProperty('--accent-bg-hover', rgba(palette.accent, fill + 0.07));
+    root.setProperty('--accent-glow', rgba(palette.accent, shine));
+    root.setProperty('--accent-line', rgba(palette.accent, line));
+    sprites = palette.aura.map(makeSprite);
+  }
+
+  // Soft round light, pre-rendered once per palette: far cheaper to draw many
+  // times per frame than a fresh radial gradient.
+  let sprites = [];
+  function makeSprite(col) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, rgba(mix(col, [255, 255, 255], 0.65), 1));
+    gr.addColorStop(0.22, rgba(col, 0.6));
+    gr.addColorStop(1, rgba(col, 0));
+    g.fillStyle = gr;
+    g.fillRect(0, 0, 64, 64);
+    return c;
   }
 
   /* ================= Layout ================= */
@@ -919,12 +961,70 @@
     }
   }
 
+  // Northern lights: three soft curtains with a bright lower edge.
+  function drawAurora(p, T, cx, cy, R) {
+    if (p.aurora <= 0.02) return;
+    const step = Math.max(3, R / 40);
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 3; i++) {
+      const col = p.aura[(i + 2) % 3];
+      const base = cy - R * (0.3 + i * 0.13);
+      const h = R * (0.22 + 0.06 * i);
+      const edge = (x) => {
+        const u = (x - cx) / R;
+        return base + R * (0.06 * Math.sin(u * 2.1 + T * 0.13 + i * 2) + 0.03 * Math.sin(u * 4.7 - T * 0.21 + i));
+      };
+      const tall = (x) => h * (0.55 + 0.45 * Math.sin(((x - cx) / R) * 3.3 + T * 0.17 + i * 1.3));
+      const a = p.aurora * (0.8 + 0.2 * Math.sin(T * 0.3 + i * 2));
+      const g = ctx.createLinearGradient(0, base - h - R * 0.1, 0, base + R * 0.1);
+      g.addColorStop(0, rgba(col, 0));
+      g.addColorStop(0.7, rgba(col, 0.13 * a));
+      g.addColorStop(1, rgba(col, 0.3 * a));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      for (let x = cx - R; x <= cx + R + step; x += step) ctx.lineTo(x, edge(x));
+      for (let x = cx + R + step; x >= cx - R - step; x -= step) ctx.lineTo(x, edge(x) - tall(x));
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // The halo: three coloured lights turning slowly around the porthole,
+  // swelling with the breath.
+  function drawAura(T, p, cx, cy, R, breath) {
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 3; i++) {
+      const a = T * 0.07 + (i * TAU) / 3;
+      const d = R * (0.32 + 0.08 * Math.sin(T * 0.11 + i));
+      glow(cx + Math.cos(a) * d, cy + Math.sin(a) * d * 0.8, R * 0.3, R * (1.55 + 0.25 * breath), p.aura[i], 0.07 + 0.07 * breath);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  function drawFireflies(T, p) {
+    if (!sprites.length || p.fire <= 0.02) return;
+    ctx.globalCompositeOperation = 'lighter';
+    for (const f of FIREFLIES) {
+      const k = (f.y + T * f.spd) % 1;
+      const y = (1 - k) * (H + 40) - 20;
+      const x = f.x * W + Math.sin(T * 0.3 + f.sway) * f.swayAmp;
+      const twinkle = 0.45 + 0.55 * Math.pow((Math.sin(T * f.tw + f.ph) + 1) / 2, 2);
+      ctx.globalAlpha = clamp(p.fire * twinkle * Math.sin(k * Math.PI) * (0.35 + f.r * 0.2), 0, 1);
+      const s = f.r * 7;
+      ctx.drawImage(sprites[f.c], x - s, y - s, s * 2, s * 2);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   // Outside the orb: background, ambient glow, stars, and the sea's horizon
   // continuing beyond the porthole as faint swells.
   function drawSurroundings(t, T, p, cx, cy, R, level, light) {
     ctx.fillStyle = rgb(p.bg);
     ctx.fillRect(0, 0, W, H);
     glow(cx, cy, R * 0.5, R * 2.4, p.glow, 0.09 + 0.12 * light.breath);
+    drawAura(T, p, cx, cy, R, light.breath);
     ctx.save();
     ctx.translate(cx, level);
     ctx.scale(1, 0.22);
@@ -950,6 +1050,59 @@
       strokeCurve((x) => y0 + Math.sin(((x - cx) / R) * (2.2 + j) + T * (0.5 + j * 0.15) * dir) * R * (0.012 + j * 0.006), 0, W, 8);
     }
     ctx.globalAlpha = 1;
+    drawFireflies(T, p);
+  }
+
+  // Beams of light fanning out from the sun, turning very slowly.
+  function drawSunRays(T, p, light, R) {
+    const a = p.sun * (0.4 + 0.6 * p.rays);
+    if (a <= 0.02) return;
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 8; i++) {
+      const ang = T * 0.012 + (i * TAU) / 8 + Math.sin(i * 2.3) * 0.25;
+      const len = R * (0.9 + 0.35 * Math.sin(T * 0.21 + i * 1.7));
+      const spread = 0.05 + 0.03 * Math.sin(i * 3.1);
+      const g = ctx.createRadialGradient(light.x, light.y, R * 0.08, light.x, light.y, len);
+      g.addColorStop(0, rgba(p.light, 0.11 * a * (0.7 + 0.3 * Math.sin(T * 0.4 + i))));
+      g.addColorStop(1, rgba(p.light, 0));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(light.x, light.y);
+      ctx.arc(light.x, light.y, len, ang - spread, ang + spread);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // Now and then, in daylight, a pale rainbow appears and fades away.
+  const rainbow = { next: between(12, 45), cur: null };
+  const RAINBOW = [[255, 90, 90], [255, 170, 70], [255, 235, 100], [110, 230, 120], [90, 170, 255], [170, 120, 255]];
+
+  function drawRainbow(t, p, cx, R, level) {
+    const rb = rainbow;
+    if (!rb.cur && t > rb.next && p.rays > 0.5) {
+      rb.cur = { t0: t, dur: between(35, 60), x: between(-0.35, 0.35), r: between(0.6, 0.85) };
+    }
+    if (!rb.cur) return;
+    const k = (t - rb.cur.t0) / rb.cur.dur;
+    if (k > 1) {
+      rb.cur = null;
+      rb.next = t + between(60, 180);
+      return;
+    }
+    const a = Math.pow(Math.sin(k * Math.PI), 2) * p.rays * 0.13;
+    const band = R * 0.016;
+    const x = cx + rb.cur.x * R;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineWidth = band * 1.3;
+    RAINBOW.forEach((c, i) => {
+      ctx.strokeStyle = rgba(c, a);
+      ctx.beginPath();
+      ctx.arc(x, level + R * 0.1, R * rb.cur.r - i * band, Math.PI, TAU);
+      ctx.stroke();
+    });
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   function drawSun(p, light, R) {
@@ -1040,6 +1193,11 @@
         ctx.beginPath();
         ctx.moveTo(x - len, y);
         ctx.lineTo(x + len, y);
+        if (flicker > 0.8 && gl.d < 0.6) {   // the brightest glints become little stars
+          const s = len * (flicker - 0.8) * 4.5;
+          ctx.moveTo(x, y - s);
+          ctx.lineTo(x, y + s);
+        }
         ctx.stroke();
       }
     }
@@ -1073,6 +1231,49 @@
 
   /* ================= Frame ================= */
 
+  // The arrival: the scene rises out of the dark and the porthole opens with
+  // a ring of light, in the first seconds after the page loads.
+  const INTRO = reduceMotion ? 0.8 : 3.2;
+  let tStart = null;
+
+  function drawArrival(k, intro, p, cx, cy, R) {
+    ctx.globalCompositeOperation = 'lighter';
+    const fade = (1 - intro) * Math.min(1, k * 6);
+    glow(cx, cy, R * 0.3, R * 2.3, p.light, 0.22 * Math.sin(k * Math.PI));
+    ctx.strokeStyle = rgba(p.aura[0], 0.55 * fade);
+    ctx.lineWidth = 2 + 10 * (1 - intro);
+    ctx.beginPath();
+    ctx.arc(cx, cy, R * (1 + 0.9 * intro), 0, TAU);
+    ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = rgba(p.bg, 1 - Math.min(1, k * 2.2));   // out of the dark
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // The porthole's edge: an iridescent reflection turning slowly.
+  function drawRim(T, p, cx, cy, R, breath) {
+    const a = 0.2 + 0.22 * breath;
+    let rim = rgba(p.light, a);
+    if (ctx.createConicGradient) {
+      rim = ctx.createConicGradient(T * 0.12, cx, cy);
+      p.aura.forEach((c, i) => rim.addColorStop(i / 3, rgba(c, a)));
+      rim.addColorStop(1, rgba(p.aura[0], a));
+    }
+    ctx.strokeStyle = rim;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R - 0.5, 0, TAU);
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.globalCompositeOperation = 'lighter';               // and its soft glow
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R + 1.5, 0, TAU);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   // breath: 0 (empty lungs) .. 1 (full). t: seconds.
   function draw(breath, t) {
     if (!W) return;
@@ -1081,9 +1282,12 @@
     refreshPalette(t);
     const p = palette;
     const T = reduceMotion ? t * 0.3 : t;
+    if (tStart === null) tStart = t;
+    const arrival = clamp((t - tStart) / INTRO, 0, 1);
+    const intro = 1 - Math.pow(1 - arrival, 3);            // ease-out
 
     const cx = ocx, cy = ocy;
-    const R = orbMax * (0.6 + 0.4 * breath);              // the orb grows with the breath…
+    const R = orbMax * (0.6 + 0.4 * breath) * (0.86 + 0.14 * intro);   // the orb grows with the breath…
     const level = cy + R - (0.2 + 0.62 * breath) * 2 * R;  // …and the tide rises inside it
     const light = {
       x: cx + R * 0.28, y: cy - R * (0.12 + 0.72 * p.alt), amount: p.sun + 0.6 * p.moon, breath,
@@ -1109,7 +1313,10 @@
     ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R);
 
     drawStars(p, T, level);
+    drawAurora(p, T, cx, cy, R);
+    drawRainbow(t, p, cx, R, level);
     drawClouds(p, T, cx, cy, R);
+    drawSunRays(T, p, light, R);
     drawSun(p, light, R);
     for (const g of flock.gulls) drawGull(g, t, T, p, cx, cy, R, level);
     const front = drawWaves(T, p, cx, cy, R, level, t);
@@ -1126,11 +1333,8 @@
     ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R);
     ctx.restore();
 
-    ctx.strokeStyle = rgba(p.light, 0.1 + 0.12 * breath);   // rim
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(cx, cy, R - 0.5, 0, TAU);
-    ctx.stroke();
+    drawRim(T, p, cx, cy, R, breath);
+    if (arrival < 1) drawArrival(arrival, intro, p, cx, cy, R);
   }
 
   window.Scene = {

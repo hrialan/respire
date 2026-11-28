@@ -8,8 +8,10 @@ Cohérence cardiaque, simplement. Une webapp installable : une mer abstraite dan
 
 - **Une séance guidée** : compte à rebours, « Inspirez / Expirez », temps restant, anneau de progression. La séance se termine toujours sur une respiration complète.
 - **Une scène vivante** : l'orbe grossit et la marée monte à l'inspiration. Cinq couches de vagues, de l'écume, le reflet du soleil ou de la lune, des rayons sous l'eau le jour, du plancton lumineux la nuit.
-- **Un ciel qui suit l'heure** : aube, jour, couchant, nuit étoilée, avec des transitions continues. On peut aussi forcer l'ambiance dans les réglages.
+- **Un ciel qui suit l'heure** : aube, jour, couchant, nuit étoilée, avec des transitions continues. Chaque moment a ses couleurs : lagon turquoise le jour, corail et or au couchant, indigo la nuit, avec une aurore boréale. Le bouton et l'anneau prennent la couleur du moment. On peut aussi forcer l'ambiance dans les réglages.
 - **Des visiteurs** : des bateaux (voilier, dériveur, chalutier, goélette) et des mouettes traversent l’horizon au hasard : seuls ou à plusieurs, dans un sens ou dans l’autre, près ou au loin, et la nuit une étoile filante passe de temps en temps.
+- **Une faune de rêve** : sous l'eau passent des bancs de poissons, des méduses, une baleine constellée de lumières, une raie manta, et des dauphins sautent hors de l'eau. La nuit, tout luit.
+- **De la magie** : une aura irisée tourne autour du hublot et respire avec lui, des lucioles et des embruns lumineux montent doucement, le soleil rayonne et son reflet scintille, et parfois un arc-en-ciel apparaît. À l'ouverture, la scène sort du noir et le hublot s'ouvre dans un anneau de lumière.
 - **Vibrations (Android)** : une impulsion à l'inspiration, deux à l'expiration, et un motif en fin de séance. Sur iPhone, Safari ne permet pas aux sites de vibrer pendant la séance : c'est alors le son qui guide.
 - **Son du vent (optionnel)** : un vent généré en direct, qui se lève à l'inspiration et retombe à l'expiration. Rafales irrégulières, léger sifflement, mouvement gauche-droite et une nappe chaude en fond. Le son joue même quand l'iPhone est en mode silencieux.
 - L'écran reste allumé pendant la séance. L'app fonctionne hors ligne et compte tes séances du jour.
