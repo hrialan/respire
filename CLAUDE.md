@@ -10,6 +10,7 @@ Respire : une webapp de cohérence cardiaque (PWA), en HTML, CSS et JavaScript, 
 
 ## Publier
 
+- **Avant chaque commit d'une nouvelle fonction, l'utilisateur la teste et la valide en local.** Lance le serveur local, donne-lui l'URL à ouvrir (avec `?h=…` si c'est utile) et ce qu'il doit regarder. Attends son accord avant de commiter ou d'ouvrir la PR.
 - **Ne pousse jamais directement sur `main`**, même si on te le demande. Crée une branche, pousse-la et ouvre une pull request avec `gh pr create`. La fusion revient à l'utilisateur. Une règle GitHub (ruleset « Protéger main ») refuse de toute façon les push directs, les force-push et la suppression de `main`.
 - La fusion sur `main` publie le site (GitHub Pages).
 - **À chaque changement livré, change le numéro de `CACHE` dans `sw.js`** (`respire-vN`). Sans ça, les apps installées gardent l'ancienne version plus longtemps. Si tu ajoutes un fichier, ajoute-le aussi à `ASSETS`.
