@@ -7,8 +7,9 @@
 //   - le vent : il se lève à l'inspiration, siffle dans les rafales, retombe
 //     à l'expiration ;
 //   - les repères seuls, sans fond sonore.
-// À chaque changement de phase, un bol chantant effleuré : une note claire
-// qui monte pour inspirer, une note grave qui descend pour expirer. On peut
+// À chaque changement de phase, un ping de sonar : une brève impulsion de note
+// pure, qui résonne longuement dans l'eau profonde puis s'éteint. Plus aiguë
+// pour inspirer, plus grave pour expirer. On peut
 // respirer les yeux fermés.
 //
 // Sous les vagues et le vent, une nappe d'accords qui s'ouvre à l'inspiration
@@ -26,7 +27,9 @@
   'use strict';
 
   const VOLUME = 2.5;          // level of the noise beds (≈ -22 dBFS RMS at full breath)
-  const CUE_LEVEL = 0.1;       // singing bowl at each change of phase
+  const CUE_LEVEL = 0.09;      // the sonar ping at each change of phase
+  const CUE_IN = 880;          // A5: breathe in
+  const CUE_OUT = 659.25;      // E5, lower: breathe out
   const CHORDS = {             // the pad, by time of day
     day: [110, 164.81, 246.94, 277.18, 329.63],      // A2 E3 B3 C#4 E4: open, bright
     sunset: [73.42, 110, 185, 220, 277.18],         // D2 A2 F#3 A3 C#4: warm
@@ -37,6 +40,7 @@
   let actx = null;
   let noise = null;
   let reverb = null;           // shared input of the reverb (notes only)
+  let deep = null;             // shared input of the long, dark resonance of the pings
   let master = null;           // everything goes through it: a limiter against clipping
   let lastDrive = 0;           // when the breath last reached the audio graph (ms)
   let live = null;             // the voice that follows the breath during a session
@@ -81,7 +85,7 @@
     return true;
   }
 
-  // The way out: a limiter, so the loudest moment (a wave breaking as the bowl
+  // The way out: a limiter, so the loudest moment (a wave breaking as the ping
   // rings) never clips.
   function output() {
     if (master) return master;
@@ -101,6 +105,7 @@
     output();
     pinkNoise();
     reverbIn();
+    deepIn();
   }
 
   // 8 s of stereo pink noise (Paul Kellet's filter), with a crossfaded loop seam.
@@ -359,36 +364,61 @@
     };
   }
 
-  // Cues only: nothing follows the breath, the bowls do the guiding.
+  // Cues only: nothing follows the breath, the pings do the guiding.
   const quietVoice = { phase() {}, drive() {}, stop() {} };
 
   /* ================= Notes ================= */
 
-  // A singing bowl, lightly struck: inharmonic partials, the lowest beating
-  // slowly. glide: a slight rise or fall of pitch at the start.
-  function bowl(freq, level, when, glide = 1, pan = 0) {
-    const out = panner(pan);
-    out.connect(reverbIn());
-    const partials = [[1, 1, 4.5], [2.76, 0.45, 2.6], [5.4, 0.22, 1.6], [8.93, 0.1, 1]];   // ratio, level, decay (s)
-    for (const [ratio, amp, decay] of partials) {
-      for (const beat of ratio === 1 ? [0, 1.3] : [0]) {
-        const o = actx.createOscillator();
-        const f = freq * ratio + beat;
-        o.frequency.setValueAtTime(f * glide, when);
-        o.frequency.exponentialRampToValueAtTime(f, when + 0.35);
-        const g = gain(0);
-        g.gain.setValueAtTime(0, when);
-        g.gain.linearRampToValueAtTime(amp * level * (beat ? 0.5 : 1), when + 0.02);
-        g.gain.setTargetAtTime(0, when + 0.02, decay / 3);
-        o.connect(g).connect(out);
-        o.onended = () => g.disconnect();
-        o.start(when);
-        o.stop(when + decay * 1.6);   // by then it has faded below hearing
+  // The deep water a ping rings in: a long (4.5 s), dark, smooth resonance.
+  // Not an echo: a single tail that fades, as the sea sends the sound back.
+  function deepIn() {
+    if (deep) return deep;
+    const len = Math.round(actx.sampleRate * 4.5);
+    const ir = actx.createBuffer(2, len, actx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      const k = Math.exp(-6.9 / len);                        // about -60 dB at the end
+      let env = 1, lp = 0;
+      for (let i = 0; i < len; i++) {
+        lp += 0.18 * ((Math.random() * 2 - 1) - lp);        // darker: high frequencies damped
+        d[i] = lp * env * 2.2;
+        env *= k;
       }
+    }
+    const conv = actx.createConvolver();
+    conv.buffer = ir;
+    deep = gain(1);
+    deep.connect(gain(0.5)).connect(output());              // the ping itself
+    deep.connect(conv).connect(gain(1.1)).connect(output()); // its resonance
+    return deep;
+  }
+
+  // The cue: one sonar ping. A short, even pulse of pure tone (about 0.2 s,
+  // cut cleanly), its pitch sinking very slightly, ringing on in the deep
+  // water. glide: a slight rise or fall of pitch at the very start.
+  function ping(freq, level, when, glide = 1, pan = 0) {
+    const out = panner(pan);
+    out.connect(deepIn());
+    const PULSE = 0.2;
+    for (const [ratio, amp] of [[1, 1], [2, 0.05]]) {        // the tone and a touch of octave
+      const o = actx.createOscillator();
+      const f = freq * ratio;
+      o.frequency.setValueAtTime(f * glide, when);
+      o.frequency.exponentialRampToValueAtTime(f, when + 0.04);
+      o.frequency.exponentialRampToValueAtTime(f * 0.992, when + PULSE);
+      const g = gain(0);
+      g.gain.setValueAtTime(0, when);
+      g.gain.linearRampToValueAtTime(amp * level, when + 0.008);
+      g.gain.setValueAtTime(amp * level, when + PULSE - 0.03);
+      g.gain.linearRampToValueAtTime(0, when + PULSE);
+      o.connect(g).connect(out);
+      o.onended = () => g.disconnect();
+      o.start(when);
+      o.stop(when + PULSE + 0.05);
     }
   }
 
-  // A small bell, brighter and shorter than the bowl.
+  // A small bell, for the end-of-session cascade.
   function bell(freq, level, when, pan) {
     const out = panner(pan);
     out.connect(reverbIn());
@@ -462,21 +492,21 @@
       live.drive(s, playing);
     },
 
-    // A change of phase: the bowl, and the wave turns.
+    // A change of phase: the ping, and the wave turns.
     cue(kind) {
       if (!live) return;
       live.phase(kind);
       const t = actx.currentTime + 0.01;
-      if (kind === 'in') bowl(493.88, CUE_LEVEL, t, 0.97);    // B4, rising
-      else bowl(329.63, CUE_LEVEL, t, 1.03);                   // E4, settling
+      if (kind === 'in') ping(CUE_IN, CUE_LEVEL, t, 0.97);
+      else ping(CUE_OUT, CUE_LEVEL, t, 1.03);
     },
 
-    // End of a session: a cascade of crystal notes rising, then a low bowl.
+    // End of a session: a cascade of crystal notes rising, then a last, low ping.
     celebrate() {
       if (!live) return;
       const t = actx.currentTime + 0.3;
       SPARKLE.forEach((f, i) => bell(f, 0.035, t + i * 0.16 + between(0, 0.05), between(-0.6, 0.6)));
-      bowl(220, CUE_LEVEL * 1.4, t + SPARKLE.length * 0.16 + 0.2);
+      ping(440, CUE_LEVEL * 1.2, t + SPARKLE.length * 0.16 + 0.2);
       releaseLater(9);
     },
 
@@ -504,8 +534,8 @@
       prepare();
       const t = actx.currentTime + 0.05;
       if (mode === 'cues') {
-        bowl(493.88, CUE_LEVEL, t, 0.97);
-        bowl(329.63, CUE_LEVEL, t + 2.5, 1.03);
+        ping(CUE_IN, CUE_LEVEL, t, 0.97);
+        ping(CUE_OUT, CUE_LEVEL, t + 2.5, 1.03);
         releaseLater(7);
         return;
       }
@@ -514,7 +544,7 @@
       const t0 = performance.now();
       let half = false;
       v.phase('in');
-      bowl(493.88, CUE_LEVEL, t, 0.97);
+      ping(CUE_IN, CUE_LEVEL, t, 0.97);
       releaseLater(DURATION / 1000 + 5);   // keep the session playing until it has faded
       const p = { voice: v, timer: 0 };
       preview = p;
@@ -531,7 +561,7 @@
         if (k >= 0.5 && !half) {
           half = true;
           v.phase('out');
-          bowl(329.63, CUE_LEVEL, actx.currentTime + 0.01, 1.03);
+          ping(CUE_OUT, CUE_LEVEL, actx.currentTime + 0.01, 1.03);
         }
         v.drive(Math.sin(k * Math.PI), true);
       }, 50);

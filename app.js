@@ -395,7 +395,7 @@
   backdrop.addEventListener('click', closeSheet);
 
   // A whale breaching during a session (or its celebration): its song. Not in
-  // 'cues' mode, which is meant to be only the bowls.
+  // 'cues' mode, which is meant to be only the pings.
   Scene.onMoment((kind, delay) => {
     const ambient = settings.sound === 'waves' || settings.sound === 'wind';
     if (kind === 'breach' && ambient && (state === 'running' || state === 'done')) Ambience.whale(delay);
