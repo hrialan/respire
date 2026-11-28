@@ -2,8 +2,10 @@
 //
 // Un orbe (le « hublot ») dont la taille et la marée suivent le souffle,
 // un ciel qui change avec l'heure (aube, jour, couchant, nuit), et une mer
-// qui déborde du cercle. Un voilier et une mouette passent sans cesse, l'un
-// après l'autre, et la nuit une étoile filante de temps en temps.
+// qui déborde du cercle. Des bateaux et des mouettes passent, tirés au
+// hasard (type, sens, nombre, distance). Sous l'eau, une faune de rêve :
+// bancs de poissons, méduses, baleine, raie manta, et des dauphins qui sautent.
+// La nuit, tout luit, et une étoile filante passe de temps en temps.
 //
 // API : Scene.draw(breath 0..1, tempsEnSecondes), Scene.setSky(mode).
 //
@@ -178,10 +180,11 @@
   }
 
   /* ================= Visitors ================= */
-  // Each visitor: { next: time of the next appearance, cur: the one on screen }.
+  // Each visitor keeps `next`, the time of its next appearance.
   // Times are in real seconds (t), motion uses scene time (T, slowed if needed).
-  // The boat and the gull are always around: a new one sets off a few seconds
-  // after the last one leaves, and the very first is already on its way.
+  // Boats and gulls come in random groups: a new group sets off after a pause
+  // (usually short) once the last one has left, and the very first is already
+  // on its way.
 
   // Start time for a new crossing; `first` puts it already partway across.
   const departure = (t, dur, first) => (first ? t - dur * between(0.25, 0.45) : t);
@@ -225,107 +228,244 @@
     ctx.stroke();
   }
 
-  // Sailboat — riding the front wave.
-  const sailboat = { next: -Infinity, cur: null, first: true };
+  // Pause before the next group: usually short, sometimes a quiet sea or sky.
+  const pause = () => (Math.random() < 0.65 ? between(1, 5) : between(6, 18));
 
-  function updateBoat(t) {
-    const b = sailboat;
-    if (!b.cur && t > b.next) {
-      const dur = between(45, 75);
-      b.cur = { t0: departure(t, dur, b.first), dur, dir: eitherWay(), size: between(0.85, 1.15) };
-      b.first = false;
+  // Pick an index from a list of weights.
+  const pick = (weights) => {
+    let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < weights.length; i++) if ((r -= weights[i]) < 0) return i;
+    return weights.length - 1;
+  };
+
+  // Boats — one to three at a time, each on its own wave. Farther lanes are
+  // smaller, slower, hazier, and the waves in front hide their hulls now and then.
+  const LANES = [
+    { wave: 2, scale: 0.5, slow: 1.7, haze: 0.45 },
+    { wave: 3, scale: 0.72, slow: 1.3, haze: 0.2 },
+    { wave: 4, scale: 1, slow: 1, haze: 0 },   // front wave, drawn over the foam
+  ];
+  const FRONT_WAVE = 4;
+
+  // Abstract silhouettes, bow towards +x, waterline at y = 0, about 1 unit tall.
+  // `top` is the masthead (for the night light).
+  const hullShape = (stern, bow, depth, sheer = 0) => {
+    ctx.beginPath();
+    ctx.moveTo(stern, -0.02);
+    ctx.lineTo(bow, -0.02 - sheer);
+    ctx.lineTo(bow - 0.18, depth);
+    ctx.lineTo(stern + 0.17, depth);
+    ctx.closePath();
+    ctx.fill();
+  };
+  const mast = (x, top, bottom = -0.02) => {
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, bottom);
+    ctx.stroke();
+  };
+  const KINDS = {
+    sloop: {
+      size: 1, mast: -0.02, top: -1.12, weight: 5,
+      draw(c) {
+        ctx.fillStyle = c.hull;
+        hullShape(-0.6, 0.62, 0.16);
+        ctx.fillStyle = c.sail;
+        ctx.beginPath();                       // mainsail, slightly curved leech
+        ctx.moveTo(-0.02, -1.08);
+        ctx.quadraticCurveTo(-0.42, -0.5, -0.5, -0.1);
+        ctx.lineTo(-0.02, -0.1);
+        ctx.fill();
+        ctx.globalAlpha = c.fade * 0.8;
+        ctx.beginPath();                       // jib
+        ctx.moveTo(0.06, -0.92);
+        ctx.lineTo(0.06, -0.12);
+        ctx.lineTo(0.5, -0.12);
+        ctx.fill();
+        ctx.globalAlpha = c.fade;
+        mast(0.02, -1.12);
+      },
+    },
+    dinghy: {
+      size: 0.75, mast: 0.05, top: -0.78, weight: 3, bob: 1.8,
+      draw(c) {
+        ctx.fillStyle = c.hull;
+        hullShape(-0.42, 0.46, 0.13);
+        ctx.fillStyle = c.sail;
+        ctx.beginPath();                       // a single lateen-ish sail
+        ctx.moveTo(0.05, -0.76);
+        ctx.quadraticCurveTo(-0.22, -0.4, -0.36, -0.1);
+        ctx.lineTo(0.12, -0.1);
+        ctx.fill();
+        ctx.globalAlpha = c.fade;
+        mast(0.05, -0.78);
+      },
+    },
+    trawler: {
+      size: 0.95, mast: 0.32, top: -0.88, weight: 2, slow: 1.25,
+      draw(c) {
+        ctx.fillStyle = c.hull;
+        hullShape(-0.68, 0.76, 0.18, 0.12);    // high bow
+        ctx.fillStyle = c.sail;
+        ctx.fillRect(-0.48, -0.4, 0.42, 0.38); // wheelhouse
+        ctx.fillStyle = c.hull;
+        ctx.fillRect(-0.52, -0.46, 0.5, 0.07); // its roof
+        ctx.fillStyle = c.window;              // lit window at night
+        ctx.fillRect(-0.24, -0.32, 0.12, 0.1);
+        mast(0.32, -0.88, -0.06);
+        ctx.lineWidth = 0.025;
+        ctx.beginPath();                       // derrick and stays
+        ctx.moveTo(0.32, -0.7);
+        ctx.lineTo(-0.62, -0.12);
+        ctx.moveTo(0.32, -0.84);
+        ctx.lineTo(0.72, -0.16);
+        ctx.stroke();
+      },
+    },
+    schooner: {
+      size: 1.15, mast: 0.2, top: -1.06, weight: 2, slow: 1.1,
+      draw(c) {
+        ctx.fillStyle = c.hull;
+        hullShape(-0.78, 0.84, 0.17, 0.04);
+        ctx.fillStyle = c.sail;
+        ctx.beginPath();                       // mainsail, aft mast
+        ctx.moveTo(-0.24, -1.12);
+        ctx.quadraticCurveTo(-0.55, -0.6, -0.7, -0.12);
+        ctx.lineTo(-0.24, -0.12);
+        ctx.fill();
+        ctx.beginPath();                       // foresail
+        ctx.moveTo(0.18, -0.98);
+        ctx.quadraticCurveTo(-0.05, -0.55, -0.16, -0.12);
+        ctx.lineTo(0.18, -0.12);
+        ctx.fill();
+        ctx.globalAlpha = c.fade * 0.8;
+        ctx.beginPath();                       // jib to the bowsprit
+        ctx.moveTo(0.24, -0.92);
+        ctx.lineTo(0.95, -0.08);
+        ctx.lineTo(0.24, -0.12);
+        ctx.fill();
+        ctx.globalAlpha = c.fade;
+        mast(-0.2, -1.18);
+        mast(0.2, -1.06);
+        ctx.beginPath();                       // bowsprit
+        ctx.moveTo(0.8, -0.06);
+        ctx.lineTo(0.98, -0.1);
+        ctx.stroke();
+      },
+    },
+  };
+  const KIND_NAMES = Object.keys(KINDS);
+  const KIND_WEIGHTS = KIND_NAMES.map((n) => KINDS[n].weight);
+
+  const fleet = { next: -Infinity, boats: [], first: true, wait: false };
+
+  function updateFleet(t) {
+    const f = fleet;
+    f.boats = f.boats.filter((b) => t - b.t0 < b.dur);
+    if (f.wait && !f.boats.length) {   // the last one has gone: pause, then a new group
+      f.wait = false;
+      f.next = t + pause();
     }
-    if (b.cur && t - b.cur.t0 > b.cur.dur) {
-      b.cur = null;
-      b.next = t + between(1, 3);
+    if (f.boats.length || f.wait || t < f.next) return;
+    // 1 boat most of the time, sometimes 2, rarely 3; never two on one wave.
+    const n = 1 + pick([62, 28, 10]);
+    const lanes = [0, 1, 2].sort(() => Math.random() - 0.5);
+    if (n === 1 && Math.random() < 0.6) lanes.unshift(2);   // a lone boat is usually close
+    let start = t;
+    for (let i = 0; i < n; i++) {
+      const lane = LANES[lanes[i]];
+      const kind = KINDS[KIND_NAMES[pick(KIND_WEIGHTS)]];
+      const dur = between(40, 80) * lane.slow * (kind.slow || 1);
+      f.boats.push({
+        t0: i === 0 ? departure(t, dur, f.first) : start, dur, dir: eitherWay(),
+        kind, lane, size: between(0.85, 1.15) * kind.size * lane.scale, ph: Math.random() * TAU,
+      });
+      start += between(3, 20);   // the others follow a little later
     }
+    f.first = false;
+    f.wait = true;
   }
 
-  // Abstract silhouette: a hull, a mast, a mainsail and a jib.
-  function drawBoat(t, T, p, wave, cx, R) {
-    const b = sailboat.cur;
-    if (!b) return;
+  function drawBoat(b, t, T, p, wave, cx, R) {
     const k = (t - b.t0) / b.dur;
-    const x = cx + b.dir * (-1.08 + 2.16 * k) * R;
+    if (k < 0 || k > 1) return;
+    const kind = b.kind;
+    const x = cx + b.dir * (-1.1 + 2.2 * k) * R;
     const L = R * 0.11 * b.size;
     const slope = (wave(x + 3) - wave(x - 3)) / 6;
-    const y = wave(x) + L * 0.1 + Math.sin(T * 1.3) * L * 0.03;
+    const bob = kind.bob || 1;
+    const y = wave(x) + L * 0.1 + Math.sin(T * 1.3 * bob + b.ph) * L * 0.03 * bob;
     const fade = Math.min(1, k * 20, (1 - k) * 20);
 
     // Daylight: white sails. Sunset: dark silhouette. Night: moonlit sails.
+    // Farther boats fade into the colour of the horizon.
     const pale = Math.max(clamp((p.rays - 0.3) / 0.7, 0, 1), p.stars * 0.55);
-    const sail = rgb(mix(mix(p.skyT, [0, 0, 0], 0.55), [244, 246, 250], pale));
-    const hull = rgb(mix(mix(p.skyT, [0, 0, 0], 0.7), [40, 60, 90], pale * 0.6));
+    const haze = (c) => rgb(mix(c, p.skyB, b.lane.haze));
+    const c = {
+      fade,
+      sail: haze(mix(mix(p.skyT, [0, 0, 0], 0.55), [244, 246, 250], pale)),
+      hull: haze(mix(mix(p.skyT, [0, 0, 0], 0.7), [40, 60, 90], pale * 0.6)),
+      window: rgb(mix(mix(p.skyT, [0, 0, 0], 0.7), [255, 205, 130], p.stars)),
+    };
 
     ctx.save();
     ctx.translate(x, y);
-    ctx.rotate(Math.atan(slope) * 0.4 + Math.sin(T * 0.9) * 0.03);
+    ctx.rotate(Math.atan(slope) * 0.4 * bob + Math.sin(T * 0.9 * bob + b.ph) * 0.03 * bob);
     ctx.scale(b.dir * L, L);
-
     ctx.globalAlpha = fade * 0.92;
-    ctx.fillStyle = hull;
-    ctx.beginPath();
-    ctx.moveTo(-0.6, -0.02);
-    ctx.lineTo(0.62, -0.02);
-    ctx.lineTo(0.45, 0.16);
-    ctx.lineTo(-0.42, 0.16);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = sail;
-    ctx.beginPath();                       // mainsail, slightly curved leech
-    ctx.moveTo(0.02, -1.08);
-    ctx.quadraticCurveTo(0.42, -0.5, 0.5, -0.1);
-    ctx.lineTo(0.02, -0.1);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.globalAlpha = fade * 0.8;
-    ctx.beginPath();                       // jib
-    ctx.moveTo(-0.06, -0.92);
-    ctx.lineTo(-0.06, -0.12);
-    ctx.lineTo(-0.5, -0.12);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.globalAlpha = fade;
-    ctx.strokeStyle = hull;
+    ctx.strokeStyle = c.hull;
     ctx.lineWidth = 0.04;
-    ctx.beginPath();                       // mast
-    ctx.moveTo(-0.02, -1.12);
-    ctx.lineTo(-0.02, -0.02);
-    ctx.stroke();
+    kind.draw(c);
     ctx.restore();
 
-    if (p.stars > 0.3) glow(x, y - 1.12 * L, 0, L * 0.35, [255, 210, 150], 0.7 * p.stars * fade);  // masthead light
+    if (p.stars > 0.3) {   // masthead light
+      glow(x + b.dir * kind.mast * L, y + kind.top * L, 0, L * 0.35, [255, 210, 150], 0.7 * p.stars * fade * (1 - b.lane.haze * 0.5));
+    }
   }
 
-  // Seagull — one at a time crossing the orb.
-  const seagull = { next: -Infinity, cur: null, first: true };
+  function drawBoatsOn(wave, f, t, T, p, cx, R) {
+    for (const b of fleet.boats) if (b.lane.wave === wave) drawBoat(b, t, T, p, f, cx, R);
+  }
 
-  function updateGull(t) {
-    const g = seagull;
-    if (!g.cur && t > g.next) {
-      const dur = between(11, 17);
-      g.cur = {
-        t0: departure(t, dur, g.first), dur, dir: eitherWay(),
-        alt: between(0.42, 0.62), size: between(0.8, 1.15), ph: Math.random() * TAU, flapSpd: between(5, 7.5),
+  // Seagulls — alone, in pairs, or a small loose flock.
+  const flock = { next: -Infinity, gulls: [], first: true, wait: false };
+
+  function updateFlock(t) {
+    const f = flock;
+    f.gulls = f.gulls.filter((g) => t - g.t0 < g.dur);
+    if (f.wait && !f.gulls.length) {   // the last one has gone: pause, then a new group
+      f.wait = false;
+      f.next = t + pause();
+    }
+    if (f.gulls.length || f.wait || t < f.next) return;
+    const n = 1 + pick([50, 26, 14, 7, 3]);
+    const dir = eitherWay();
+    const alt = between(0.38, 0.62);
+    const dur = between(9, 19);
+    const lead = departure(t, dur, f.first);
+    for (let i = 0; i < n; i++) {
+      // Most follow the leader; now and then one goes its own way.
+      const stray = i > 0 && Math.random() < 0.15;
+      const d = stray ? between(9, 19) : dur * between(0.88, 1.12);
+      f.gulls.push({
+        t0: i === 0 ? lead : (stray ? t + between(0, 6) : lead + between(0.3, 2.5) * i),
+        dur: d, dir: stray ? -dir : dir,
+        alt: clamp(alt + (i ? between(-0.12, 0.12) : 0), 0.3, 0.7),
+        size: between(0.7, 1.15) * (n > 2 ? 0.85 : 1),
+        ph: Math.random() * TAU, flapSpd: between(5, 7.5),
         // Flight path: a slow climb or dive, a looser undulation, uneven speed
         arc: between(-0.2, 0.2), arcF: between(0.6, 1.4),
         wob: between(0.03, 0.07), wobF: between(1.5, 3),
         surge: between(0.03, 0.06),
-      };
+      });
     }
-    if (g.cur) g.first = false;
-    if (g.cur && t - g.cur.t0 > g.cur.dur) {
-      g.cur = null;
-      g.next = t + between(1, 3);
-    }
+    f.first = false;
+    f.wait = true;
   }
 
-  function drawGull(t, T, p, cx, cy, R, level) {
-    const G = seagull.cur;
-    if (!G) return;
+  function drawGull(G, t, T, p, cx, cy, R, level) {
+    const k = (t - G.t0) / G.dur;
+    if (k < 0 || k > 1) return;
     const path = (k) => {
       const kk = k + G.surge * Math.sin(k * TAU * 1.3 + G.ph);
       return [
@@ -333,7 +473,6 @@
         cy - R * (G.alt + G.arc * Math.sin(k * Math.PI * G.arcF + G.ph * 0.3) + G.wob * Math.sin(k * TAU * G.wobF + G.ph)),
       ];
     };
-    const k = (t - G.t0) / G.dur;
     const size = R * 0.055 * G.size;
     const glide = 0.35 + 0.65 * Math.max(0, Math.sin(T * 0.45 + G.ph));   // stretches of gliding
     const flap = Math.sin(T * G.flapSpd + G.ph) * glide;
@@ -362,6 +501,371 @@
     ctx.quadraticCurveTo(size * 0.45, -arch, size, tip);
     ctx.stroke();
     ctx.restore();
+  }
+
+  /* ================= Sea life ================= */
+  // Dreamlike, abstract creatures: soft shadows by day, bioluminescent at night.
+  // Each kind comes and goes at random, like the boats and the gulls.
+
+  // A troupe spawns a group, waits for all of it to leave, pauses, starts again.
+  function troupe(first, gap, spawn) {
+    const tr = { next: first, items: [], wait: false };
+    tr.update = (t) => {
+      tr.items = tr.items.filter((v) => t - v.t0 < v.dur);
+      if (tr.wait && !tr.items.length) {
+        tr.wait = false;
+        tr.next = t + gap();
+      }
+      if (!tr.wait && t >= tr.next) {
+        tr.items = spawn(t);
+        tr.wait = true;
+      }
+    };
+    return tr;
+  }
+
+  // Progress (0..1) of a crossing, or -1 when it isn't on screen.
+  const progress = (v, t) => {
+    const k = (t - v.t0) / v.dur;
+    return k < 0 || k > 1 ? -1 : k;
+  };
+  const edgeFade = (k, e = 12) => Math.min(1, k * e, (1 - k) * e);
+
+  // A point in the water: depth 0 is the surface, 1 the bottom of the orb.
+  const inWater = (front, x, d, cy, R) => {
+    const s = front(x);
+    return s + 4 + d * Math.max(0, cy + R - s - 4);
+  };
+
+  // Body colour under water: a darker shade of the sea by day, light at night.
+  const deepShade = (p, k = 0.2) => mix(mix(p.wB, p.wT, k), p.motes, p.plankton * 0.85);
+
+  const schools = troupe(between(1, 4), () => between(3, 14), (t) => {
+    const out = [];
+    const n = Math.random() < 0.25 ? 2 : 1;
+    for (let j = 0; j < n; j++) {
+      const s = {
+        t0: t + j * between(2, 8), dur: between(14, 26), dir: eitherWay(),
+        d: between(0.15, 0.7), amp: between(0.04, 0.14), f: between(0.6, 1.6),
+        size: between(0.75, 1.2), ph: Math.random() * TAU, fish: [],
+      };
+      const count = Math.round(between(4, 14));
+      for (let i = 0; i < count; i++) {
+        s.fish.push({ ox: between(-0.22, 0.22), oy: between(-0.07, 0.07), ph: Math.random() * TAU, s: between(0.7, 1.1) });
+      }
+      out.push(s);
+    }
+    return out;
+  });
+
+  const JELLY_HUES = [[255, 175, 220], [170, 225, 255], [205, 185, 255], [190, 255, 225]];
+  const jellies = troupe(between(5, 14), () => between(6, 25), (t) => {
+    const n = 1 + pick([55, 25, 12, 8]);
+    const hue = JELLY_HUES[Math.floor(Math.random() * JELLY_HUES.length)];
+    const x = between(-0.55, 0.55);
+    return Array.from({ length: n }, (_, i) => ({
+      t0: t + i * between(1, 5), dur: between(26, 42),
+      x: clamp(x + between(-0.3, 0.3), -0.75, 0.75), drift: between(-0.15, 0.15),
+      size: between(0.6, 1.15) * (i ? 0.8 : 1), ph: Math.random() * TAU, hue,
+    }));
+  });
+
+  const whales = troupe(between(15, 30), () => between(35, 90), (t) => [{
+    t0: t, dur: between(50, 80), dir: eitherWay(), d: between(0.5, 0.72),
+    size: between(0.85, 1.15), ph: Math.random() * TAU,
+  }]);
+
+  const mantas = troupe(between(25, 50), () => between(30, 80), (t) => [{
+    t0: t, dur: between(26, 42), dir: eitherWay(), d: between(0.3, 0.65),
+    size: between(0.8, 1.2), ph: Math.random() * TAU,
+  }]);
+
+  // Dolphins: a pod of one to three, each leaping two to four times as it goes.
+  const dolphins = troupe(between(10, 25), () => between(20, 60), (t) => {
+    const out = [];
+    const n = 1 + pick([45, 35, 20]);
+    const dir = eitherWay();
+    const x0 = between(-0.85, -0.35);
+    for (let i = 0; i < n; i++) {
+      let tt = t + i * between(0.4, 1.4);
+      let x = x0 + between(-0.12, 0.12);
+      const leaps = 2 + Math.floor(Math.random() * 3);
+      for (let j = 0; j < leaps && x < 0.75; j++) {
+        const jd = between(1.4, 2.0);
+        out.push({
+          t0: tt, jd, dur: jd + 0.6, dir, x, w: between(0.26, 0.36), h: between(0.13, 0.22),
+          size: between(0.85, 1.1),
+        });
+        x += between(0.32, 0.48);
+        tt += jd + between(0.6, 1.8);
+      }
+    }
+    return out;
+  });
+
+  const SEA_LIFE = [schools, jellies, whales, mantas, dolphins];
+  function updateSeaLife(t) {
+    for (const tr of SEA_LIFE) tr.update(t);
+  }
+
+  // Shapes in unit coordinates, facing +x.
+  function fishShape(wag) {
+    ctx.beginPath();
+    ctx.moveTo(0.55, 0);
+    ctx.quadraticCurveTo(0.15, -0.3, -0.3, 0);
+    ctx.quadraticCurveTo(0.15, 0.3, 0.55, 0);
+    ctx.moveTo(-0.22, 0);
+    ctx.lineTo(-0.6, -0.24 + wag);
+    ctx.lineTo(-0.5, wag * 0.5);
+    ctx.lineTo(-0.6, 0.24 + wag);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawSchool(s, t, T, p, front, cx, cy, R) {
+    const k = progress(s, t);
+    if (k < 0) return;
+    const fade = edgeFade(k);
+    const L = R * 0.034 * s.size;
+    const col = deepShade(p, 0.15);
+    const depth = (kk, f) => clamp(s.d + s.amp * Math.sin(kk * Math.PI * s.f + s.ph) + f.oy + Math.sin(T * 1.1 + f.ph) * 0.012, 0.04, 0.95);
+    for (const f of s.fish) {
+      const kk = k + f.ox * 0.25;           // spread along the path
+      const x = cx + s.dir * (-1.3 + 2.6 * kk) * R;
+      const y = inWater(front, x, depth(kk, f), cy, R);
+      const x2 = cx + s.dir * (-1.3 + 2.6 * (kk + 0.01)) * R;
+      const y2 = inWater(front, x2, depth(kk + 0.01, f), cy, R);
+      const a = clamp(Math.atan2(y2 - y, Math.abs(x2 - x)), -0.5, 0.5);
+      const l = L * f.s;
+      if (p.plankton > 0.05) glow(x, y, 0, l * 2.2, p.motes, 0.22 * p.plankton * fade);
+      // Now and then a fish turns and catches the light.
+      const flash = Math.pow(Math.max(0, Math.sin(T * 0.9 + f.ph * 3)), 12) * (1 - p.plankton);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(s.dir, 1);
+      ctx.rotate(a);
+      ctx.scale(l, l);
+      ctx.fillStyle = rgba(mix(col, p.light, flash * 0.7), (0.4 + 0.3 * p.plankton + 0.3 * flash) * fade);
+      fishShape(Math.sin(T * 7 + f.ph) * 0.1);
+      ctx.restore();
+    }
+  }
+
+  function drawJelly(j, t, T, p, front, cx, cy, R) {
+    const k = progress(j, t);
+    if (k < 0) return;
+    const fade = Math.min(1, k * 8, (1 - k) * 5);
+    const pulse = (Math.sin(T * 1.6 + j.ph) + 1) / 2;          // 1: bell contracted
+    const x = cx + (j.x + j.drift * k + Math.sin(T * 0.3 + j.ph) * 0.03) * R;
+    const d = 1.15 - 1.05 * k - 0.02 * pulse;                  // rises in small pushes
+    const y = inWater(front, x, d, cy, R);
+    const L = R * 0.06 * j.size;
+    const col = mix(j.hue, p.light, 0.3 * (1 - p.plankton));
+    const a = (0.22 + 0.38 * p.plankton) * fade;
+
+    ctx.globalCompositeOperation = 'lighter';
+    glow(x, y - L * 0.2, 0, L * (1.4 + p.plankton), j.hue, (0.06 + 0.22 * p.plankton) * fade);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(L, L);
+    const sx = 1 + 0.14 * pulse, sy = 1 - 0.14 * pulse;
+    ctx.fillStyle = rgba(col, a);
+    ctx.beginPath();                                           // bell
+    ctx.moveTo(-0.5 * sx, 0);
+    ctx.bezierCurveTo(-0.5 * sx, -0.75 * sy, 0.5 * sx, -0.75 * sy, 0.5 * sx, 0);
+    ctx.quadraticCurveTo(0.25 * sx, 0.12, 0, 0.04);
+    ctx.quadraticCurveTo(-0.25 * sx, 0.12, -0.5 * sx, 0);
+    ctx.fill();
+    ctx.strokeStyle = rgba(col, a * 0.8);
+    ctx.lineWidth = 0.04;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 4; i++) {                              // trailing tentacles
+      const x0 = (-0.3 + i * 0.2) * sx;
+      const sw = T * 1.2 + i * 1.3 + j.ph;
+      ctx.beginPath();
+      ctx.moveTo(x0, 0.06);
+      ctx.quadraticCurveTo(x0 + Math.sin(sw) * 0.15, 0.5, x0 + Math.sin(sw + 1) * 0.22, 0.95 + 0.1 * pulse);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  function drawWhale(w, t, T, p, front, cx, cy, R) {
+    const k = progress(w, t);
+    if (k < 0) return;
+    const fade = edgeFade(k, 10);
+    const x = cx + w.dir * (-1.6 + 3.2 * k) * R;
+    const y = inWater(front, x, w.d + 0.04 * Math.sin(k * TAU * 0.7 + w.ph), cy, R);
+    const L = R * 0.5 * w.size;
+    const beat = Math.sin(T * 0.9 + w.ph);
+    const tb = 0.05 * beat;
+    const night = p.plankton;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(w.dir * L, L);
+    ctx.rotate(0.05 * Math.cos(k * TAU * 0.7 + w.ph));
+    ctx.fillStyle = rgba(mix(mix(p.wB, p.wT, 0.08), [0, 0, 0], night * 0.3), (0.38 + 0.15 * night) * fade);
+    ctx.beginPath();                                           // body
+    ctx.moveTo(0.5, 0.02);
+    ctx.bezierCurveTo(0.48, -0.12, 0.2, -0.15, -0.05, -0.1);
+    ctx.bezierCurveTo(-0.22, -0.06, -0.33, -0.02 + tb * 0.3, -0.4, tb * 0.5);
+    ctx.lineTo(-0.4, 0.03 + tb * 0.5);
+    ctx.bezierCurveTo(-0.3, 0.06, -0.1, 0.11, 0.15, 0.1);
+    ctx.bezierCurveTo(0.35, 0.09, 0.5, 0.08, 0.5, 0.02);
+    ctx.fill();
+    ctx.beginPath();                                           // pectoral fin
+    ctx.moveTo(0.22, 0.08);
+    ctx.quadraticCurveTo(0.14, 0.2 + tb, 0.02, 0.24 + tb);
+    ctx.quadraticCurveTo(0.1, 0.14, 0.15, 0.09);
+    ctx.fill();
+    ctx.save();                                                // flukes
+    ctx.translate(-0.4, tb * 0.5 + 0.015);
+    ctx.rotate(beat * 0.35);
+    ctx.beginPath();
+    ctx.moveTo(0.02, 0);
+    ctx.quadraticCurveTo(-0.08, -0.1, -0.17, -0.11);
+    ctx.quadraticCurveTo(-0.09, -0.03, -0.05, 0);
+    ctx.quadraticCurveTo(-0.09, 0.03, -0.17, 0.11);
+    ctx.quadraticCurveTo(-0.08, 0.1, 0.02, 0);
+    ctx.fill();
+    ctx.restore();
+
+    // Constellation of lights along the flank, brightest at night.
+    ctx.globalCompositeOperation = 'lighter';
+    const spots = 0.12 + 0.7 * night;
+    for (let i = 0; i < 9; i++) {
+      const u = i / 8;
+      const sx = 0.38 - u * 0.68;
+      const sy = -0.04 + 0.05 * Math.sin(u * 5 + 1) + (i % 2) * 0.03;
+      const tw = 0.6 + 0.4 * Math.sin(T * 1.3 + i * 2.1 + w.ph);
+      glow(sx, sy, 0, 0.035, p.motes, spots * tw * fade);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
+  }
+
+  function drawManta(m, t, T, p, front, cx, cy, R) {
+    const k = progress(m, t);
+    if (k < 0) return;
+    const fade = edgeFade(k, 10);
+    const x = cx + m.dir * (-1.4 + 2.8 * k) * R;
+    const y = inWater(front, x, m.d + 0.08 * Math.sin(k * TAU * 0.8 + m.ph), cy, R);
+    const L = R * 0.3 * m.size;
+    const w = Math.sin(T * 1.1 + m.ph);
+    const up = 0.34 + 0.2 * w, dn = 0.2 - 0.12 * w;            // near wing high, far wing foreshortened
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(m.dir * L, L);
+    ctx.rotate(-0.08 * w);
+    ctx.fillStyle = rgba(deepShade(p, 0.1), (0.36 + 0.25 * p.plankton) * fade);
+    ctx.beginPath();
+    ctx.moveTo(0.28, 0);
+    ctx.quadraticCurveTo(0.12, -up * 0.6, -0.08, -up);
+    ctx.quadraticCurveTo(-0.04, -up * 0.4, -0.2, 0);
+    ctx.quadraticCurveTo(-0.04, dn * 0.5, -0.06, dn);
+    ctx.quadraticCurveTo(0.1, dn * 0.5, 0.28, 0);
+    ctx.fill();
+    ctx.strokeStyle = ctx.fillStyle;
+    ctx.lineWidth = 0.015;
+    ctx.beginPath();                                           // whip tail
+    ctx.moveTo(-0.19, 0);
+    ctx.quadraticCurveTo(-0.4, 0.03 * Math.sin(T * 1.1 + m.ph + 1), -0.62, 0.02);
+    ctx.stroke();
+    if (p.plankton > 0.05) {                                   // glowing wing edge
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = rgba(p.motes, 0.35 * p.plankton * fade);
+      ctx.lineWidth = 0.012;
+      ctx.beginPath();
+      ctx.moveTo(0.28, 0);
+      ctx.quadraticCurveTo(0.12, -up * 0.6, -0.08, -up);
+      ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    ctx.restore();
+  }
+
+  // Everything below the surface, clipped to the water.
+  function drawSeaLife(t, T, p, front, cx, cy, R) {
+    const step = Math.max(2, R / 70);
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cx - R, cy + R);
+    for (let x = cx - R; x <= cx + R + step; x += step) ctx.lineTo(x, front(x) + 2);
+    ctx.lineTo(cx + R, cy + R);
+    ctx.closePath();
+    ctx.clip();
+    for (const w of whales.items) drawWhale(w, t, T, p, front, cx, cy, R);
+    for (const m of mantas.items) drawManta(m, t, T, p, front, cx, cy, R);
+    for (const s of schools.items) drawSchool(s, t, T, p, front, cx, cy, R);
+    for (const j of jellies.items) drawJelly(j, t, T, p, front, cx, cy, R);
+    ctx.restore();
+  }
+
+  // Dolphin leaps, above the surface (the part under water is hidden).
+  function drawLeaps(t, T, p, front, cx, cy, R) {
+    if (!dolphins.items.length) return;
+    const step = Math.max(2, R / 70);
+    const pale = Math.max(clamp((p.rays - 0.3) / 0.7, 0, 1), p.stars * 0.55);
+    const body = mix(mix(p.skyT, [0, 0, 0], 0.6), [70, 100, 135], pale);
+    const spray = mix([235, 248, 255], p.motes, p.plankton);
+
+    for (const j of dolphins.items) {
+      const u = (t - j.t0) / j.jd;
+      if (u < -0.05 || u > 1.5) continue;
+      const xAt = (v) => cx + j.dir * (j.x + v * j.w) * R;
+      // Splashes where it leaves and re-enters the water
+      for (const [s, at] of [[u / 0.3, 0], [(u - 0.9) / 0.5, 1]]) {
+        if (s <= 0 || s >= 1) continue;
+        const sx = xAt(at), sy = front(sx);
+        ctx.fillStyle = rgba(spray, 0.6 * (1 - s));
+        for (let i = 0; i < 6; i++) {
+          const o = (i - 2.5) / 2.5;
+          ctx.beginPath();
+          ctx.arc(sx + o * R * 0.035 * (0.4 + s), sy - R * 0.05 * Math.sin(s * Math.PI) * (1 - Math.abs(o) * 0.5), Math.max(0.8, R * 0.006), 0, TAU);
+          ctx.fill();
+        }
+        if (p.plankton > 0.05) glow(sx, sy, 0, R * 0.06, p.motes, 0.3 * p.plankton * (1 - s));
+      }
+      if (u < 0 || u > 1) continue;
+      const x = xAt(u);
+      const y = front(x) + R * 0.035 - j.h * R * 4 * u * (1 - u);
+      const a = Math.atan2(-j.h * (4 - 8 * u), j.w);
+      const L = R * 0.15 * j.size;
+
+      ctx.save();
+      ctx.beginPath();                                         // clip: above the surface
+      ctx.moveTo(cx - R, cy - R);
+      ctx.lineTo(cx + R, cy - R);
+      for (let xx = cx + R; xx >= cx - R - step; xx -= step) ctx.lineTo(xx, front(xx));
+      ctx.closePath();
+      ctx.clip();
+      ctx.translate(x, y);
+      ctx.scale(j.dir, 1);
+      ctx.rotate(a);
+      ctx.scale(L, L);
+      ctx.fillStyle = rgba(body, 0.92);
+      ctx.beginPath();                                         // body
+      ctx.moveTo(0.5, 0);
+      ctx.quadraticCurveTo(0.42, -0.06, 0.32, -0.07);
+      ctx.quadraticCurveTo(0.05, -0.13, -0.3, -0.04);
+      ctx.lineTo(-0.42, -0.01);
+      ctx.lineTo(-0.56, -0.09);
+      ctx.lineTo(-0.5, 0);
+      ctx.lineTo(-0.56, 0.09);
+      ctx.lineTo(-0.42, 0.02);
+      ctx.quadraticCurveTo(0, 0.1, 0.3, 0.05);
+      ctx.quadraticCurveTo(0.42, 0.03, 0.5, 0);
+      ctx.fill();
+      ctx.beginPath();                                         // dorsal fin
+      ctx.moveTo(0.04, -0.11);
+      ctx.quadraticCurveTo(-0.04, -0.24, -0.12, -0.25);
+      ctx.quadraticCurveTo(-0.09, -0.15, -0.14, -0.08);
+      ctx.fill();
+      ctx.restore();
+    }
   }
 
   /* ================= Layers ================= */
@@ -473,8 +977,9 @@
   }
 
   // Five layers back to front; distant ones take on the sky's haze.
-  // Returns the front wave's surface function.
-  function drawWaves(T, p, cx, cy, R, level) {
+  // Returns the front wave's surface function. Farther boats are drawn on
+  // their own wave, so the waves in front of them can hide their hulls.
+  function drawWaves(T, p, cx, cy, R, level, t) {
     const step = Math.max(2, R / 70);
     let front = null;
     WAVES.forEach((w, i) => {
@@ -493,6 +998,7 @@
       ctx.strokeStyle = rgba(p.light, 0.06 + 0.1 * w.depth);   // light catching each crest
       ctx.lineWidth = 1;
       strokeCurve(f, cx - R, cx + R, step);
+      if (i !== FRONT_WAVE) drawBoatsOn(i, f, t, T, p, cx, R);
       front = f;
     });
     return front;
@@ -584,8 +1090,9 @@
     };
 
     updateShooting(t, p, level);
-    updateBoat(t);
-    updateGull(t);
+    updateFleet(t);
+    updateFlock(t);
+    updateSeaLife(t);
 
     drawSurroundings(t, T, p, cx, cy, R, level, light);
 
@@ -604,11 +1111,13 @@
     drawStars(p, T, level);
     drawClouds(p, T, cx, cy, R);
     drawSun(p, light, R);
-    drawGull(t, T, p, cx, cy, R, level);
-    const front = drawWaves(T, p, cx, cy, R, level);
+    for (const g of flock.gulls) drawGull(g, t, T, p, cx, cy, R, level);
+    const front = drawWaves(T, p, cx, cy, R, level, t);
+    drawSeaLife(t, T, p, front, cx, cy, R);
     drawUnderwaterLight(T, p, cx, cy, R, front, light);
     drawFoam(T, p, cx, R, front, breath);
-    drawBoat(t, T, p, front, cx, R);
+    drawLeaps(t, T, p, front, cx, cy, R);
+    drawBoatsOn(FRONT_WAVE, front, t, T, p, cx, R);
 
     const sheen = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.45, 0, cx - R * 0.35, cy - R * 0.45, R);
     sheen.addColorStop(0, 'rgba(255,255,255,0.07)');
