@@ -7,9 +7,18 @@
 // bancs de poissons, méduses, baleine, raie manta, et des dauphins qui sautent.
 // La nuit, tout luit, et une étoile filante passe de temps en temps.
 //
-// API : Scene.draw(breath 0..1, tempsEnSecondes), Scene.setSky(mode).
+// La magie : une aura irisée et des lucioles qui suivent le souffle, une
+// aurore boréale la nuit, des rayons et parfois un arc-en-ciel le jour, une
+// arrivée en lumière, des moments rares (baleine qui saute, vague de plancton
+// lumineux, pluie d'étoiles filantes) et une fête à la fin de la séance. Si
+// les images arrivent trop lentement, la scène allège ses effets d'elle-même.
 //
-// Paramètre d'URL pour le développement : ?h=19 force l'heure (en mode Auto).
+// API : Scene.draw(breath 0..1, tempsEnSecondes), Scene.setSky(mode),
+// Scene.celebrate() (fin de séance), Scene.mood() (ambiance du ciel pour le
+// son), Scene.onMoment(fn) (prévenu à chaque moment rare).
+//
+// Paramètres d'URL pour le développement : ?h=19 force l'heure (en mode Auto),
+// ?moment amène un moment rare toutes les 25 s, ?fete joue la fête de fin.
 (() => {
   'use strict';
 
@@ -26,7 +35,8 @@
   /* ================= Helpers ================= */
 
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-  const mix = (a, b, k) => (Array.isArray(a) ? a.map((v, i) => v + (b[i] - v) * k) : a + (b - a) * k);
+  // Works on numbers, colours, and lists of colours.
+  const mix = (a, b, k) => (Array.isArray(a) ? a.map((v, i) => mix(v, b[i], k)) : a + (b - a) * k);
   const ch = (v) => Math.round(clamp(v, 0, 255));
   const rgb = (c) => `rgb(${ch(c[0])},${ch(c[1])},${ch(c[2])})`;
   const rgba = (c, a) => `rgba(${ch(c[0])},${ch(c[1])},${ch(c[2])},${clamp(a, 0, 1).toFixed(3)})`;
@@ -68,6 +78,11 @@
   const CLOUDS = Array.from({ length: 5 }, (_, i) => ({
     y: 0.25 + rand() * 0.5, ph: rand(), spd: 0.006 + rand() * 0.008, w: 0.45 + rand() * 0.4, puffs: 3 + (i % 3),
   }));
+  // Lights rising slowly around the porthole: sea spray, embers, fireflies.
+  const FIREFLIES = Array.from({ length: 42 }, (_, i) => ({
+    x: rand(), y: rand(), spd: 0.006 + rand() * 0.016, sway: rand() * TAU, swayAmp: 8 + rand() * 30,
+    r: 0.6 + rand() * rand() * 2.4, ph: rand() * TAU, tw: 0.6 + rand() * 1.6, c: i % 3,
+  }));
 
   // Back to front. off: height offset (×R), amp: amplitude (×R), k: waves across, spd: rad/s
   const WAVES = [
@@ -82,32 +97,43 @@
   // bg: page background · skyT/skyB: sky top/horizon · wT/wB: water top/deep
   // light: sun or moon colour · alt: its height (0..1) · sun/moon/stars/clouds/
   // rays/plankton: how present each element is (0..1) · motes: particle colour
+  // aura: three colours for the halo, the iridescent rim, the aurora and the
+  // floating lights · aurora/fire: how present those are · accent: UI colour
+  // btn: the button's fill, glow and outline strength (soft and glassy by day)
 
   const NIGHT = {
-    bg: [0, 0, 0], skyT: [3, 6, 18], skyB: [14, 26, 54], wT: [30, 72, 125], wB: [2, 8, 22],
-    glow: [80, 120, 210], light: [220, 230, 255], sun: 0, moon: 1, alt: 0.62, stars: 1, clouds: 0.12,
-    rays: 0, motes: [90, 210, 255], plankton: 1,
+    bg: [4, 6, 22], skyT: [5, 9, 32], skyB: [20, 38, 84], wT: [22, 86, 146], wB: [2, 10, 30],
+    glow: [70, 140, 235], light: [225, 235, 255], sun: 0, moon: 1, alt: 0.62, stars: 1, clouds: 0.12,
+    rays: 0, motes: [80, 230, 255], plankton: 1,
+    aura: [[60, 215, 255], [150, 110, 255], [70, 255, 190]], aurora: 1, fire: 1, accent: [140, 228, 255], btn: [0.16, 0.4, 0],
   };
   const DAWN = {
-    bg: [7, 5, 14], skyT: [28, 36, 82], skyB: [226, 140, 122], wT: [74, 96, 158], wB: [6, 14, 36],
-    glow: [255, 160, 130], light: [255, 196, 150], sun: 1, moon: 0, alt: 0.16, stars: 0.12, clouds: 0.55,
-    rays: 0.3, motes: [255, 205, 175], plankton: 0,
+    bg: [20, 12, 34], skyT: [54, 62, 134], skyB: [255, 172, 140], wT: [92, 134, 196], wB: [10, 22, 54],
+    glow: [255, 170, 150], light: [255, 206, 160], sun: 1, moon: 0, alt: 0.16, stars: 0.12, clouds: 0.55,
+    rays: 0.3, motes: [255, 212, 180], plankton: 0,
+    aura: [[255, 176, 150], [196, 160, 255], [255, 220, 168]], aurora: 0.1, fire: 0.55, accent: [255, 222, 214], btn: [0.09, 0.2, 0.2],
   };
   const DAY = {
-    bg: [3, 12, 24], skyT: [38, 112, 184], skyB: [160, 212, 238], wT: [48, 158, 206], wB: [5, 38, 78],
-    glow: [120, 200, 255], light: [255, 250, 232], sun: 1, moon: 0, alt: 0.78, stars: 0, clouds: 0.7,
-    rays: 1, motes: [225, 245, 255], plankton: 0,
+    bg: [4, 24, 46], skyT: [22, 118, 214], skyB: [150, 222, 246], wT: [18, 192, 212], wB: [4, 60, 112],
+    glow: [90, 210, 255], light: [255, 250, 230], sun: 1, moon: 0, alt: 0.78, stars: 0, clouds: 0.7,
+    rays: 1, motes: [235, 255, 255], plankton: 0,
+    aura: [[90, 228, 255], [120, 255, 214], [255, 238, 186]], aurora: 0, fire: 0.4, accent: [214, 246, 252], btn: [0.07, 0.14, 0.24],
   };
-  const AFTERNOON = { ...DAY, skyB: [178, 208, 226], alt: 0.55, light: [255, 238, 210] };
+  const AFTERNOON = {
+    ...DAY, skyB: [192, 222, 236], wT: [28, 176, 206], alt: 0.55, light: [255, 236, 200],
+    aura: [[110, 220, 255], [255, 218, 166], [140, 255, 220]],
+  };
   const SUNSET = {
-    bg: [12, 4, 16], skyT: [42, 40, 98], skyB: [255, 136, 88], wT: [112, 88, 140], wB: [10, 12, 36],
-    glow: [255, 128, 80], light: [255, 168, 98], sun: 1, moon: 0, alt: 0.14, stars: 0.08, clouds: 0.8,
-    rays: 0.3, motes: [255, 182, 140], plankton: 0,
+    bg: [26, 8, 32], skyT: [58, 40, 122], skyB: [255, 122, 92], wT: [150, 92, 152], wB: [16, 14, 50],
+    glow: [255, 122, 110], light: [255, 172, 92], sun: 1, moon: 0, alt: 0.14, stars: 0.08, clouds: 0.8,
+    rays: 0.3, motes: [255, 204, 152], plankton: 0,
+    aura: [[255, 118, 150], [255, 190, 92], [176, 112, 255]], aurora: 0, fire: 0.75, accent: [255, 214, 228], btn: [0.08, 0.18, 0.24],
   };
   const DUSK = {
-    bg: [4, 2, 12], skyT: [10, 12, 40], skyB: [86, 52, 116], wT: [42, 60, 122], wB: [3, 8, 26],
-    glow: [140, 100, 210], light: [232, 226, 255], sun: 0, moon: 0.65, alt: 0.34, stars: 0.6, clouds: 0.3,
-    rays: 0, motes: [140, 175, 255], plankton: 0.5,
+    bg: [12, 6, 30], skyT: [16, 16, 60], skyB: [122, 62, 152], wT: [52, 72, 154], wB: [4, 10, 36],
+    glow: [160, 100, 232], light: [235, 226, 255], sun: 0, moon: 0.65, alt: 0.34, stars: 0.6, clouds: 0.3,
+    rays: 0, motes: [150, 180, 255], plankton: 0.5,
+    aura: [[200, 120, 255], [90, 172, 255], [255, 130, 200]], aurora: 0.45, fire: 0.85, accent: [210, 196, 255], btn: [0.13, 0.32, 0.08],
   };
 
   const TIMELINE = [
@@ -148,7 +174,46 @@
     if (themeMeta) themeMeta.setAttribute('content', rgb(palette.bg));
     // Page background matches the scene, so any strip the canvas does not
     // reach (under Safari's bars, the home indicator) never shows as black.
-    document.documentElement.style.setProperty('--bg', rgb(palette.bg));
+    const root = document.documentElement.style;
+    root.setProperty('--bg', rgb(palette.bg));
+    // The button and the progress ring take the colour of the moment.
+    root.setProperty('--accent', rgb(palette.accent));
+    const [fill, shine, line] = palette.btn;
+    root.setProperty('--accent-bg', rgba(palette.accent, fill));
+    root.setProperty('--accent-bg-hover', rgba(palette.accent, fill + 0.07));
+    root.setProperty('--accent-glow', rgba(palette.accent, shine));
+    root.setProperty('--accent-line', rgba(palette.accent, line));
+    sprites = palette.aura.map(makeSprite);
+    halos = palette.aura.map(makeHalo);
+  }
+
+  // Soft round light, pre-rendered once per palette: far cheaper to draw many
+  // times per frame than a fresh radial gradient.
+  let sprites = [];
+  let halos = [];
+  function makeSprite(col) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, rgba(mix(col, [255, 255, 255], 0.65), 1));
+    gr.addColorStop(0.22, rgba(col, 0.6));
+    gr.addColorStop(1, rgba(col, 0));
+    g.fillStyle = gr;
+    g.fillRect(0, 0, 64, 64);
+    return c;
+  }
+  // The same for the halo: a wide, even glow, no bright core.
+  function makeHalo(col) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d');
+    const gr = g.createRadialGradient(64, 64, 12, 64, 64, 64);
+    gr.addColorStop(0, rgba(col, 1));
+    gr.addColorStop(1, rgba(col, 0));
+    g.fillStyle = gr;
+    g.fillRect(0, 0, 128, 128);
+    return c;
   }
 
   /* ================= Layout ================= */
@@ -189,29 +254,44 @@
   // Start time for a new crossing; `first` puts it already partway across.
   const departure = (t, dur, first) => (first ? t - dur * between(0.25, 0.45) : t);
 
-  // Shooting star — anywhere in the night sky.
+  // Shooting star — anywhere in the night sky. `meteors` holds the extra ones
+  // of a shower (a rare moment, or the end of a session).
   const shooting = { next: between(6, 16), cur: null };
+  const meteors = [];
+
+  function newStreak(t, level, a0 = between(0.12, 0.37) * Math.PI, dir = eitherWay()) {
+    return {
+      t0: t, dur: between(0.9, 1.4), len: between(90, 180),
+      x: W * between(0.1, 0.9), y: Math.min(level, H) * between(0.05, 0.45),
+      a: dir > 0 ? a0 : Math.PI - a0,
+    };
+  }
+
+  // Several shooting stars over a few seconds, all falling the same way.
+  function meteorShower(t, level, n) {
+    const dir = eitherWay();
+    const a0 = between(0.15, 0.3) * Math.PI;
+    for (let i = 0; i < n; i++) meteors.push(newStreak(t + between(0, 5), level, a0 + between(-0.04, 0.04), dir));
+  }
 
   function updateShooting(t, p, level) {
     const s = shooting;
-    if (!s.cur && t > s.next && p.stars > 0.5) {
-      const a = between(0.12, 0.37) * Math.PI;
-      s.cur = {
-        t0: t, dur: between(0.9, 1.4), len: between(90, 180),
-        x: W * between(0.15, 0.85), y: Math.min(level, H) * between(0.05, 0.4),
-        a: eitherWay() > 0 ? a : Math.PI - a,
-      };
-    }
+    if (!s.cur && t > s.next && p.stars > 0.5) s.cur = newStreak(t, level);
     if (s.cur && t - s.cur.t0 > s.cur.dur) {
       s.cur = null;
       s.next = t + between(14, 40);
     }
+    for (let i = meteors.length - 1; i >= 0; i--) if (t - meteors[i].t0 > meteors[i].dur) meteors.splice(i, 1);
   }
 
   function drawShootingStar(t, p) {
-    const s = shooting.cur;
-    if (!s) return;
+    if (shooting.cur) drawStreak(shooting.cur, t, p);
+    for (const m of meteors) drawStreak(m, t, p);
+  }
+
+  function drawStreak(s, t, p) {
     const k = (t - s.t0) / s.dur;
+    if (k < 0) return;
     const dx = Math.cos(s.a), dy = Math.sin(s.a);
     const hx = s.x + dx * k * s.len * 2.2;
     const hy = s.y + dy * k * s.len * 2.2;
@@ -637,7 +717,7 @@
       const y2 = inWater(front, x2, depth(kk + 0.01, f), cy, R);
       const a = clamp(Math.atan2(y2 - y, Math.abs(x2 - x)), -0.5, 0.5);
       const l = L * f.s;
-      if (p.plankton > 0.05) glow(x, y, 0, l * 2.2, p.motes, 0.22 * p.plankton * fade);
+      if (p.plankton > 0.05 && quality === 2) glow(x, y, 0, l * 2.2, p.motes, 0.22 * p.plankton * fade);
       // Now and then a fish turns and catches the light.
       const flash = Math.pow(Math.max(0, Math.sin(T * 0.9 + f.ph * 3)), 12) * (1 - p.plankton);
       ctx.save();
@@ -691,22 +771,9 @@
     ctx.globalCompositeOperation = 'source-over';
   }
 
-  function drawWhale(w, t, T, p, front, cx, cy, R) {
-    const k = progress(w, t);
-    if (k < 0) return;
-    const fade = edgeFade(k, 10);
-    const x = cx + w.dir * (-1.6 + 3.2 * k) * R;
-    const y = inWater(front, x, w.d + 0.04 * Math.sin(k * TAU * 0.7 + w.ph), cy, R);
-    const L = R * 0.5 * w.size;
-    const beat = Math.sin(T * 0.9 + w.ph);
+  // Whale silhouette, about 1 unit long, facing +x. beat: -1..1, the tail stroke.
+  function whaleShape(beat) {
     const tb = 0.05 * beat;
-    const night = p.plankton;
-
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(w.dir * L, L);
-    ctx.rotate(0.05 * Math.cos(k * TAU * 0.7 + w.ph));
-    ctx.fillStyle = rgba(mix(mix(p.wB, p.wT, 0.08), [0, 0, 0], night * 0.3), (0.38 + 0.15 * night) * fade);
     ctx.beginPath();                                           // body
     ctx.moveTo(0.5, 0.02);
     ctx.bezierCurveTo(0.48, -0.12, 0.2, -0.15, -0.05, -0.1);
@@ -731,6 +798,24 @@
     ctx.quadraticCurveTo(-0.08, 0.1, 0.02, 0);
     ctx.fill();
     ctx.restore();
+  }
+
+  function drawWhale(w, t, T, p, front, cx, cy, R) {
+    const k = progress(w, t);
+    if (k < 0) return;
+    const fade = edgeFade(k, 10);
+    const x = cx + w.dir * (-1.6 + 3.2 * k) * R;
+    const y = inWater(front, x, w.d + 0.04 * Math.sin(k * TAU * 0.7 + w.ph), cy, R);
+    const L = R * 0.5 * w.size;
+    const beat = Math.sin(T * 0.9 + w.ph);
+    const night = p.plankton;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(w.dir * L, L);
+    ctx.rotate(0.05 * Math.cos(k * TAU * 0.7 + w.ph));
+    ctx.fillStyle = rgba(mix(mix(p.wB, p.wT, 0.08), [0, 0, 0], night * 0.3), (0.38 + 0.15 * night) * fade);
+    whaleShape(beat);
 
     // Constellation of lights along the flank, brightest at night.
     ctx.globalCompositeOperation = 'lighter';
@@ -801,10 +886,68 @@
     for (const m of mantas.items) drawManta(m, t, T, p, front, cx, cy, R);
     for (const s of schools.items) drawSchool(s, t, T, p, front, cx, cy, R);
     for (const j of jellies.items) drawJelly(j, t, T, p, front, cx, cy, R);
+    for (const v of rare.items) if (v.kind === 'glow') drawPlanktonWave(v, t, T, p, front, cx, cy, R);
     ctx.restore();
   }
 
   // Dolphin leaps, above the surface (the part under water is hidden).
+  // Dolphin silhouette, facing +x, about 1 unit long. What tells it from a
+  // shark: a short beak under a rounded forehead, an arched back, a fin that
+  // curves back like a hook, small crescent flukes, and a pale belly.
+  function dolphinShape(body, belly) {
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.moveTo(0.55, 0.035);                                  // tip of the beak
+    ctx.quadraticCurveTo(0.49, 0.012, 0.42, 0.004);           // beak
+    ctx.bezierCurveTo(0.41, -0.055, 0.35, -0.088, 0.27, -0.092);   // rounded forehead
+    ctx.bezierCurveTo(0.08, -0.1, -0.16, -0.06, -0.34, 0.012);     // arched back
+    ctx.quadraticCurveTo(-0.4, 0.035, -0.44, 0.05);           // slim tail stock
+    ctx.quadraticCurveTo(-0.5, 0.012, -0.61, 0.006);          // upper fluke
+    ctx.quadraticCurveTo(-0.55, 0.045, -0.535, 0.07);         // notch
+    ctx.quadraticCurveTo(-0.56, 0.1, -0.6, 0.135);            // lower fluke
+    ctx.quadraticCurveTo(-0.5, 0.1, -0.43, 0.078);
+    ctx.quadraticCurveTo(-0.1, 0.112, 0.2, 0.078);            // belly
+    ctx.quadraticCurveTo(0.38, 0.058, 0.42, 0.036);           // throat
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();                                          // dorsal fin, hooked back
+    ctx.moveTo(0.05, -0.096);
+    ctx.quadraticCurveTo(-0.02, -0.17, -0.13, -0.2);
+    ctx.quadraticCurveTo(-0.09, -0.13, -0.15, -0.075);
+    ctx.fill();
+    ctx.beginPath();                                          // pectoral fin
+    ctx.moveTo(0.25, 0.06);
+    ctx.quadraticCurveTo(0.2, 0.12, 0.13, 0.145);
+    ctx.quadraticCurveTo(0.17, 0.09, 0.17, 0.065);
+    ctx.fill();
+    ctx.fillStyle = belly;                                    // pale belly, from throat to tail
+    ctx.beginPath();
+    ctx.moveTo(0.43, 0.034);
+    ctx.quadraticCurveTo(0.3, 0.02, 0.1, 0.045);
+    ctx.quadraticCurveTo(-0.15, 0.06, -0.38, 0.062);
+    ctx.quadraticCurveTo(-0.1, 0.108, 0.2, 0.075);
+    ctx.quadraticCurveTo(0.38, 0.056, 0.43, 0.034);
+    ctx.fill();
+  }
+
+  // Droplets thrown up where something leaves or enters the water.
+  // s: 0..1 through the splash · big: 1 for a dolphin, larger for a whale.
+  function drawSplash(sx, sy, s, R, p, spray, big) {
+    const n = big > 1 ? 12 : 6;
+    ctx.fillStyle = rgba(spray, 0.6 * (1 - s));
+    for (let i = 0; i < n; i++) {
+      const o = (i - (n - 1) / 2) / ((n - 1) / 2);
+      ctx.beginPath();
+      ctx.arc(
+        sx + o * R * 0.035 * big * (0.4 + s),
+        sy - R * 0.05 * big * Math.sin(s * Math.PI) * (1 - Math.abs(o) * 0.5) * (0.8 + 0.4 * Math.sin(i * 2.7)),
+        Math.max(0.8, R * 0.006 * (big > 1 ? 1.3 : 1)), 0, TAU,
+      );
+      ctx.fill();
+    }
+    if (p.plankton > 0.05) glow(sx, sy, 0, R * 0.06 * big, p.motes, 0.3 * p.plankton * (1 - s));
+  }
+
   function drawLeaps(t, T, p, front, cx, cy, R) {
     if (!dolphins.items.length) return;
     const step = Math.max(2, R / 70);
@@ -818,22 +961,13 @@
       const xAt = (v) => cx + j.dir * (j.x + v * j.w) * R;
       // Splashes where it leaves and re-enters the water
       for (const [s, at] of [[u / 0.3, 0], [(u - 0.9) / 0.5, 1]]) {
-        if (s <= 0 || s >= 1) continue;
-        const sx = xAt(at), sy = front(sx);
-        ctx.fillStyle = rgba(spray, 0.6 * (1 - s));
-        for (let i = 0; i < 6; i++) {
-          const o = (i - 2.5) / 2.5;
-          ctx.beginPath();
-          ctx.arc(sx + o * R * 0.035 * (0.4 + s), sy - R * 0.05 * Math.sin(s * Math.PI) * (1 - Math.abs(o) * 0.5), Math.max(0.8, R * 0.006), 0, TAU);
-          ctx.fill();
-        }
-        if (p.plankton > 0.05) glow(sx, sy, 0, R * 0.06, p.motes, 0.3 * p.plankton * (1 - s));
+        if (s > 0 && s < 1) drawSplash(xAt(at), front(xAt(at)), s, R, p, spray, 1);
       }
       if (u < 0 || u > 1) continue;
       const x = xAt(u);
       const y = front(x) + R * 0.035 - j.h * R * 4 * u * (1 - u);
       const a = Math.atan2(-j.h * (4 - 8 * u), j.w);
-      const L = R * 0.15 * j.size;
+      const L = R * 0.17 * j.size;   // a little larger, so the shape reads
 
       ctx.save();
       ctx.beginPath();                                         // clip: above the surface
@@ -846,25 +980,223 @@
       ctx.scale(j.dir, 1);
       ctx.rotate(a);
       ctx.scale(L, L);
-      ctx.fillStyle = rgba(body, 0.92);
-      ctx.beginPath();                                         // body
-      ctx.moveTo(0.5, 0);
-      ctx.quadraticCurveTo(0.42, -0.06, 0.32, -0.07);
-      ctx.quadraticCurveTo(0.05, -0.13, -0.3, -0.04);
-      ctx.lineTo(-0.42, -0.01);
-      ctx.lineTo(-0.56, -0.09);
-      ctx.lineTo(-0.5, 0);
-      ctx.lineTo(-0.56, 0.09);
-      ctx.lineTo(-0.42, 0.02);
-      ctx.quadraticCurveTo(0, 0.1, 0.3, 0.05);
-      ctx.quadraticCurveTo(0.42, 0.03, 0.5, 0);
-      ctx.fill();
-      ctx.beginPath();                                         // dorsal fin
-      ctx.moveTo(0.04, -0.11);
-      ctx.quadraticCurveTo(-0.04, -0.24, -0.12, -0.25);
-      ctx.quadraticCurveTo(-0.09, -0.15, -0.14, -0.08);
-      ctx.fill();
+      dolphinShape(rgba(body, 0.94), rgba(mix(body, [225, 238, 248], 0.55 * pale), 0.9));
       ctx.restore();
+    }
+  }
+
+  /* ================= Rare moments & the end of a session ================= */
+  // Every few minutes, a surprise: a whale breaching, a wave of light running
+  // through the plankton, a meteor shower. The end of a session brings one
+  // too, with a burst of lights rising from the porthole.
+  //
+  // For testing: ?moment brings a rare moment every 25 s, ?fete plays the
+  // end-of-session celebration a few seconds after loading.
+
+  const TEST_MOMENTS = params.has('moment');
+  const TEST_PARTY = params.has('fete');
+
+  const rare = { next: TEST_MOMENTS ? 5 : between(70, 200), items: [] };
+  let momentHook = null;       // told of each rare moment (the sound follows the whale)
+
+  function startRare(t, p, level, festive) {
+    const options = [['breach', 3]];
+    if (p.plankton > 0.3) options.push(['glow', 3]);
+    if (p.stars > 0.5) options.push(['meteors', 3]);
+    const kind = options[pick(options.map((o) => o[1]))][0];
+    if (kind === 'meteors') {
+      meteorShower(t, level, festive ? 10 : 7);
+    } else if (kind === 'breach') {
+      const jd = between(3, 3.6);
+      rare.items.push({ kind, t0: t + (festive ? 1 : 0), jd, dur: jd + 2, dir: eitherWay(), x: between(-0.45, -0.05), size: between(0.9, 1.05) });
+      if (momentHook) momentHook('breach', festive ? 1 : 0);
+    } else {
+      rare.items.push({ kind, t0: t, dur: 7, dir: eitherWay() });
+    }
+    // At a celebration in daylight, the dolphins come along too.
+    if (festive && !dolphins.items.length) {
+      dolphins.wait = false;
+      dolphins.next = t + 1.5;
+    }
+  }
+
+  function updateRare(t, p, level) {
+    rare.items = rare.items.filter((v) => t - v.t0 < v.dur);
+    if (t > rare.next) {
+      startRare(t, p, level, false);
+      rare.next = t + (TEST_MOMENTS ? 25 : between(180, 480));
+    }
+  }
+
+  // Under water: a wave of light sweeping through the plankton.
+  function drawPlanktonWave(v, t, T, p, front, cx, cy, R) {
+    const k = (t - v.t0) / v.dur;
+    if (k < 0 || k > 1) return;
+    const bx = cx + v.dir * (-1.3 + 2.6 * k) * R;
+    const a = Math.sin(k * Math.PI) * (0.25 + 0.5 * p.plankton);
+    ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createLinearGradient(bx - R * 0.35, 0, bx + R * 0.35, 0);
+    g.addColorStop(0, rgba(p.motes, 0));
+    g.addColorStop(0.5, rgba(p.motes, 0.28 * a));
+    g.addColorStop(1, rgba(p.motes, 0));
+    ctx.fillStyle = g;
+    ctx.fillRect(bx - R * 0.35, cy - R, R * 0.7, 2 * R);
+    for (let i = 0; i < 28; i++) {                             // sparks within the wave
+      const h1 = Math.sin(i * 12.9898) * 43758.5453 % 1;
+      const h2 = Math.sin(i * 78.233) * 12543.21 % 1;
+      const x = bx + h1 * R * 0.3;
+      const y = inWater(front, x, Math.abs(h2) * 0.7 + 0.02, cy, R);
+      const tw = 0.5 + 0.5 * Math.sin(T * 5 + i);
+      ctx.fillStyle = rgba(mix(p.motes, [255, 255, 255], 0.5), a * tw);
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(0.8, R * 0.007), 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // Above water: the whale breaching, and the crest lit by the plankton wave.
+  function drawRareAbove(t, T, p, front, cx, cy, R) {
+    if (!rare.items.length) return;
+    const step = Math.max(2, R / 70);
+    const pale = Math.max(clamp((p.rays - 0.3) / 0.7, 0, 1), p.stars * 0.55);
+    const body = mix(mix(p.skyT, [0, 0, 0], 0.6), [70, 100, 135], pale);
+    const spray = mix([235, 248, 255], p.motes, p.plankton);
+
+    for (const v of rare.items) {
+      if (v.kind === 'glow') {
+        const k = (t - v.t0) / v.dur;
+        const bx = cx + v.dir * (-1.3 + 2.6 * k) * R;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = rgba(p.motes, 0.6 * Math.sin(k * Math.PI) * (0.3 + 0.7 * p.plankton));
+        ctx.lineWidth = 2.5;
+        strokeCurve(front, bx - R * 0.25, bx + R * 0.25, step);
+        ctx.globalCompositeOperation = 'source-over';
+        continue;
+      }
+      // Breach: rises almost straight up, turns in the air, falls back.
+      const u = (t - v.t0) / v.jd;
+      if (u < -0.05) continue;
+      const xAt = (q) => cx + v.dir * (v.x + q * 0.4) * R;
+      for (const [s, at, big] of [[u / 0.35, 0, 2], [(u - 0.85) / 0.6, 1, 2.6]]) {
+        if (s > 0 && s < 1) drawSplash(xAt(at), front(xAt(at)), s, R, p, spray, big);
+      }
+      if (u > 1) continue;
+      const x = xAt(u);
+      const y = front(x) + R * 0.3 - R * 0.85 * 4 * u * (1 - u);
+      const a = Math.atan2(-0.85 * (4 - 8 * u), 0.4) + u * 0.5;   // nose up, then rolling over
+      const L = R * 0.5 * v.size;
+      ctx.save();
+      ctx.beginPath();                                         // clip: above the surface
+      ctx.moveTo(cx - R, cy - R);
+      ctx.lineTo(cx + R, cy - R);
+      for (let xx = cx + R; xx >= cx - R - step; xx -= step) ctx.lineTo(xx, front(xx));
+      ctx.closePath();
+      ctx.clip();
+      ctx.translate(x, y);
+      ctx.scale(v.dir, 1);
+      ctx.rotate(a);
+      ctx.scale(L, L);
+      ctx.fillStyle = rgba(body, 0.95);
+      whaleShape(Math.sin(T * 2.2));
+      ctx.restore();
+    }
+  }
+
+  // The celebration at the end of a session.
+  let partyPending = false;
+  let party = null;            // { t0 }
+  const burst = [];
+
+  function startParty(t, p, cx, cy, R, level) {
+    party = { t0: t };
+    burst.length = 0;
+    for (let i = 0; i < 80; i++) {
+      const a = Math.random() * TAU;
+      const v = R * between(0.12, 0.45);
+      burst.push({
+        t0: t + between(0, 1.4), life: between(4.5, 8.5),
+        x0: cx + Math.cos(a) * R, y0: cy + Math.sin(a) * R,
+        vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.7 - R * 0.12,
+        r: 0.7 + Math.random() * 2, c: i % 3, ph: Math.random() * TAU,
+      });
+    }
+    startRare(t, p, level, true);
+  }
+
+  // 0..1..0 over the celebration: how much the halo and the rim flare.
+  function partyGlow(t) {
+    if (!party) return 0;
+    const e = t - party.t0;
+    if (e > 10) {
+      party = null;
+      return 0;
+    }
+    return Math.min(1, e / 1.2) * Math.min(1, (10 - e) / 6);
+  }
+
+  function drawParty(t, p, cx, cy, R) {
+    if (!party && !burst.length) return;
+    ctx.globalCompositeOperation = 'lighter';
+    if (party) {                                                // a ring of light opening out
+      const e = (t - party.t0) / 2.8;
+      if (e < 1) {
+        const ease = 1 - Math.pow(1 - e, 3);
+        ctx.strokeStyle = rgba(p.aura[0], 0.5 * (1 - ease));
+        ctx.lineWidth = 2 + 8 * (1 - ease);
+        ctx.beginPath();
+        ctx.arc(cx, cy, R * (1 + 1.2 * ease), 0, TAU);
+        ctx.stroke();
+      }
+    }
+    const bright = Math.max(p.fire, 0.8);
+    for (let i = burst.length - 1; i >= 0; i--) {
+      const b = burst[i];
+      const k = (t - b.t0) / b.life;
+      if (k > 1) {
+        burst.splice(i, 1);
+        continue;
+      }
+      if (k < 0 || !sprites.length) continue;
+      const ease = 1 - Math.pow(1 - k, 2);
+      const x = b.x0 + b.vx * ease * 2 + Math.sin(t * 1.3 + b.ph) * 6;
+      const y = b.y0 + b.vy * ease * 2 - R * 0.3 * k;
+      ctx.globalAlpha = clamp(bright * Math.pow(Math.sin(k * Math.PI), 0.7) * (0.55 + 0.45 * Math.sin(t * 3 + b.ph)), 0, 1);
+      const s = b.r * 8;
+      ctx.drawImage(sprites[b.c], x - s, y - s, s * 2, s * 2);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  /* ================= Breath & smoothness ================= */
+  // How the breath moves (not only where it is): positive while breathing
+  // in, negative while breathing out. The floating lights rise on the
+  // in-breath and hang almost still on the out-breath.
+  let lastT = null, lastBreath = 0;
+  let inhale = 0;
+  let fireClock = 0;
+
+  // If frames come too slowly for a while (an older phone), drop the most
+  // costly effects, once and for good: smooth beats lavish. 30 fps (low
+  // power mode) is fine and does not count as slow.
+  let quality = 2;             // 2: everything · 1: lighter · 0: essentials
+  let slowFor = 0;
+
+  function followBreath(t, breath) {
+    const dt = lastT === null ? 0 : clamp(t - lastT, 0, 0.1);
+    lastT = t;
+    const rate = dt > 0 ? (breath - lastBreath) / dt : 0;
+    lastBreath = breath;
+    if (dt > 0) inhale += (clamp(rate / 0.18, -1, 1) - inhale) * (1 - Math.exp(-dt / 0.4));
+    fireClock += dt * (reduceMotion ? 0.3 : 1) * (0.55 + 1.6 * Math.max(0, inhale) + 0.3 * Math.min(0, inhale));
+
+    if (dt > 0 && dt < 0.1) {
+      slowFor = dt > 1 / 26 ? slowFor + dt : Math.max(0, slowFor - dt * 0.5);
+      if (slowFor > 2.5 && quality > 0) {
+        quality--;
+        slowFor = 0;
+      }
     }
   }
 
@@ -919,12 +1251,76 @@
     }
   }
 
+  // Northern lights: three soft curtains with a bright lower edge.
+  function drawAurora(p, T, cx, cy, R, breath) {
+    if (p.aurora <= 0.02) return;
+    const step = Math.max(3, R / 40);
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < (quality ? 3 : 1); i++) {
+      const col = p.aura[(i + 2) % 3];
+      const base = cy - R * (0.3 + i * 0.13);
+      const h = R * (0.22 + 0.06 * i);
+      const edge = (x) => {
+        const u = (x - cx) / R;
+        return base + R * (0.06 * Math.sin(u * 2.1 + T * 0.13 + i * 2) + 0.03 * Math.sin(u * 4.7 - T * 0.21 + i));
+      };
+      const tall = (x) => h * (0.55 + 0.45 * Math.sin(((x - cx) / R) * 3.3 + T * 0.17 + i * 1.3));
+      const a = p.aurora * (0.8 + 0.2 * Math.sin(T * 0.3 + i * 2)) * (0.7 + 0.6 * breath);   // brighter on the in-breath
+      const g = ctx.createLinearGradient(0, base - h - R * 0.1, 0, base + R * 0.1);
+      g.addColorStop(0, rgba(col, 0));
+      g.addColorStop(0.7, rgba(col, 0.13 * a));
+      g.addColorStop(1, rgba(col, 0.3 * a));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      for (let x = cx - R; x <= cx + R + step; x += step) ctx.lineTo(x, edge(x));
+      for (let x = cx + R + step; x >= cx - R - step; x -= step) ctx.lineTo(x, edge(x) - tall(x));
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // The halo: three coloured lights turning slowly around the porthole,
+  // swelling with the breath, and flaring at the end of a session.
+  function drawAura(T, p, cx, cy, R, breath, flare) {
+    if (!halos.length) return;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = clamp(0.07 + 0.07 * breath + 0.14 * flare, 0, 1);
+    const r = R * (1.55 + 0.25 * breath + 0.35 * flare);
+    for (let i = 0; i < 3; i++) {
+      const a = T * 0.07 + (i * TAU) / 3;
+      const d = R * (0.32 + 0.08 * Math.sin(T * 0.11 + i));
+      ctx.drawImage(halos[i], cx + Math.cos(a) * d - r, cy + Math.sin(a) * d * 0.8 - r, r * 2, r * 2);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  function drawFireflies(T, p, breath) {
+    if (!sprites.length || p.fire <= 0.02) return;
+    ctx.globalCompositeOperation = 'lighter';
+    const every = quality === 2 ? 1 : quality === 1 ? 2 : 4;
+    for (let i = 0; i < FIREFLIES.length; i += every) {
+      const f = FIREFLIES[i];
+      const k = (f.y + fireClock * f.spd) % 1;   // fireClock runs faster on the in-breath
+      const y = (1 - k) * (H + 40) - 20;
+      const x = f.x * W + Math.sin(T * 0.3 + f.sway) * f.swayAmp;
+      const twinkle = 0.45 + 0.55 * Math.pow((Math.sin(T * f.tw + f.ph) + 1) / 2, 2);
+      ctx.globalAlpha = clamp(p.fire * twinkle * Math.sin(k * Math.PI) * (0.35 + f.r * 0.2) * (0.75 + 0.5 * breath), 0, 1);
+      const s = f.r * 7;
+      ctx.drawImage(sprites[f.c], x - s, y - s, s * 2, s * 2);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   // Outside the orb: background, ambient glow, stars, and the sea's horizon
   // continuing beyond the porthole as faint swells.
   function drawSurroundings(t, T, p, cx, cy, R, level, light) {
     ctx.fillStyle = rgb(p.bg);
     ctx.fillRect(0, 0, W, H);
     glow(cx, cy, R * 0.5, R * 2.4, p.glow, 0.09 + 0.12 * light.breath);
+    drawAura(T, p, cx, cy, R, light.breath, light.flare);
     ctx.save();
     ctx.translate(cx, level);
     ctx.scale(1, 0.22);
@@ -950,6 +1346,59 @@
       strokeCurve((x) => y0 + Math.sin(((x - cx) / R) * (2.2 + j) + T * (0.5 + j * 0.15) * dir) * R * (0.012 + j * 0.006), 0, W, 8);
     }
     ctx.globalAlpha = 1;
+    drawFireflies(T, p, light.breath);
+  }
+
+  // Beams of light fanning out from the sun, turning very slowly.
+  function drawSunRays(T, p, light, R) {
+    const a = p.sun * (0.4 + 0.6 * p.rays);
+    if (a <= 0.02 || quality < 2) return;
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 8; i++) {
+      const ang = T * 0.012 + (i * TAU) / 8 + Math.sin(i * 2.3) * 0.25;
+      const len = R * (0.9 + 0.35 * Math.sin(T * 0.21 + i * 1.7));
+      const spread = 0.05 + 0.03 * Math.sin(i * 3.1);
+      const g = ctx.createRadialGradient(light.x, light.y, R * 0.08, light.x, light.y, len);
+      g.addColorStop(0, rgba(p.light, 0.11 * a * (0.7 + 0.3 * Math.sin(T * 0.4 + i))));
+      g.addColorStop(1, rgba(p.light, 0));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(light.x, light.y);
+      ctx.arc(light.x, light.y, len, ang - spread, ang + spread);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // Now and then, in daylight, a pale rainbow appears and fades away.
+  const rainbow = { next: between(12, 45), cur: null };
+  const RAINBOW = [[255, 90, 90], [255, 170, 70], [255, 235, 100], [110, 230, 120], [90, 170, 255], [170, 120, 255]];
+
+  function drawRainbow(t, p, cx, R, level) {
+    const rb = rainbow;
+    if (!rb.cur && t > rb.next && p.rays > 0.5) {
+      rb.cur = { t0: t, dur: between(35, 60), x: between(-0.35, 0.35), r: between(0.6, 0.85) };
+    }
+    if (!rb.cur) return;
+    const k = (t - rb.cur.t0) / rb.cur.dur;
+    if (k > 1) {
+      rb.cur = null;
+      rb.next = t + between(60, 180);
+      return;
+    }
+    const a = Math.pow(Math.sin(k * Math.PI), 2) * p.rays * 0.13;
+    const band = R * 0.016;
+    const x = cx + rb.cur.x * R;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineWidth = band * 1.3;
+    RAINBOW.forEach((c, i) => {
+      ctx.strokeStyle = rgba(c, a);
+      ctx.beginPath();
+      ctx.arc(x, level + R * 0.1, R * rb.cur.r - i * band, Math.PI, TAU);
+      ctx.stroke();
+    });
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   function drawSun(p, light, R) {
@@ -1040,6 +1489,11 @@
         ctx.beginPath();
         ctx.moveTo(x - len, y);
         ctx.lineTo(x + len, y);
+        if (flicker > 0.8 && gl.d < 0.6) {   // the brightest glints become little stars
+          const s = len * (flicker - 0.8) * 4.5;
+          ctx.moveTo(x, y - s);
+          ctx.lineTo(x, y + s);
+        }
         ctx.stroke();
       }
     }
@@ -1073,6 +1527,51 @@
 
   /* ================= Frame ================= */
 
+  // The arrival: the scene rises out of the dark and the porthole opens with
+  // a ring of light, in the first seconds after the page loads.
+  const INTRO = reduceMotion ? 0.8 : 3.2;
+  let tStart = null;
+  let testPartyDone = false;
+
+  function drawArrival(k, intro, p, cx, cy, R) {
+    ctx.globalCompositeOperation = 'lighter';
+    const fade = (1 - intro) * Math.min(1, k * 6);
+    glow(cx, cy, R * 0.3, R * 2.3, p.light, 0.22 * Math.sin(k * Math.PI));
+    ctx.strokeStyle = rgba(p.aura[0], 0.55 * fade);
+    ctx.lineWidth = 2 + 10 * (1 - intro);
+    ctx.beginPath();
+    ctx.arc(cx, cy, R * (1 + 0.9 * intro), 0, TAU);
+    ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = rgba(p.bg, 1 - Math.min(1, k * 2.2));   // out of the dark
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // The porthole's edge: an iridescent reflection turning slowly.
+  function drawRim(T, p, cx, cy, R, breath, flare) {
+    const a = clamp(0.2 + 0.22 * breath + 0.4 * flare, 0, 1);
+    let rim = rgba(p.light, a);
+    if (ctx.createConicGradient) {
+      rim = ctx.createConicGradient(T * 0.12, cx, cy);
+      p.aura.forEach((c, i) => rim.addColorStop(i / 3, rgba(c, a)));
+      rim.addColorStop(1, rgba(p.aura[0], a));
+    }
+    ctx.strokeStyle = rim;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R - 0.5, 0, TAU);
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    if (!quality) return;
+    ctx.globalCompositeOperation = 'lighter';               // and its soft glow
+    ctx.globalAlpha = clamp(0.35 + 0.4 * flare, 0, 1);
+    ctx.lineWidth = 5 + 6 * flare;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R + 1.5, 0, TAU);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   // breath: 0 (empty lungs) .. 1 (full). t: seconds.
   function draw(breath, t) {
     if (!W) return;
@@ -1081,15 +1580,30 @@
     refreshPalette(t);
     const p = palette;
     const T = reduceMotion ? t * 0.3 : t;
+    if (tStart === null) tStart = t;
+    const arrival = clamp((t - tStart) / INTRO, 0, 1);
+    const intro = 1 - Math.pow(1 - arrival, 3);            // ease-out
+    followBreath(t, breath);
 
     const cx = ocx, cy = ocy;
-    const R = orbMax * (0.6 + 0.4 * breath);              // the orb grows with the breath…
+    const R = orbMax * (0.6 + 0.4 * breath) * (0.86 + 0.14 * intro);   // the orb grows with the breath…
     const level = cy + R - (0.2 + 0.62 * breath) * 2 * R;  // …and the tide rises inside it
     const light = {
       x: cx + R * 0.28, y: cy - R * (0.12 + 0.72 * p.alt), amount: p.sun + 0.6 * p.moon, breath,
+      flare: partyGlow(t),
     };
 
+    if (TEST_PARTY && !testPartyDone && t - tStart > 4) {
+      testPartyDone = true;
+      partyPending = true;
+    }
+    if (partyPending) {
+      partyPending = false;
+      startParty(t, p, cx, cy, R, level);
+    }
+
     updateShooting(t, p, level);
+    updateRare(t, p, level);
     updateFleet(t);
     updateFlock(t);
     updateSeaLife(t);
@@ -1109,7 +1623,10 @@
     ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R);
 
     drawStars(p, T, level);
+    drawAurora(p, T, cx, cy, R, breath);
+    drawRainbow(t, p, cx, R, level);
     drawClouds(p, T, cx, cy, R);
+    drawSunRays(T, p, light, R);
     drawSun(p, light, R);
     for (const g of flock.gulls) drawGull(g, t, T, p, cx, cy, R, level);
     const front = drawWaves(T, p, cx, cy, R, level, t);
@@ -1117,6 +1634,7 @@
     drawUnderwaterLight(T, p, cx, cy, R, front, light);
     drawFoam(T, p, cx, R, front, breath);
     drawLeaps(t, T, p, front, cx, cy, R);
+    drawRareAbove(t, T, p, front, cx, cy, R);
     drawBoatsOn(FRONT_WAVE, front, t, T, p, cx, R);
 
     const sheen = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.45, 0, cx - R * 0.35, cy - R * 0.45, R);
@@ -1124,13 +1642,17 @@
     sheen.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = sheen;
     ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R);
+    if (quality) {   // warmer on the in-breath, cooler on the out-breath
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.fillStyle = rgba(mix([110, 170, 255], [255, 184, 130], breath), 0.14);
+      ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R);
+      ctx.globalCompositeOperation = 'source-over';
+    }
     ctx.restore();
 
-    ctx.strokeStyle = rgba(p.light, 0.1 + 0.12 * breath);   // rim
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(cx, cy, R - 0.5, 0, TAU);
-    ctx.stroke();
+    drawRim(T, p, cx, cy, R, breath, light.flare);
+    drawParty(t, p, cx, cy, R);
+    if (arrival < 1) drawArrival(arrival, intro, p, cx, cy, R);
   }
 
   window.Scene = {
@@ -1140,6 +1662,22 @@
     setSky(mode) {
       skyMode = mode;
       paletteStale = true;
+    },
+
+    // End of a session: a burst of lights, the halo flares, and a rare moment.
+    celebrate() {
+      partyPending = true;
+    },
+
+    // The mood of the sky right now, for the sound: 'day' | 'sunset' | 'night'.
+    mood() {
+      if (palette.stars > 0.5) return 'night';
+      return palette.sun > 0.5 && palette.alt < 0.3 ? 'sunset' : 'day';
+    },
+
+    // fn(kind, delaySeconds) is called when a rare moment starts.
+    onMoment(fn) {
+      momentHook = fn;
     },
   };
 })();

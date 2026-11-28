@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Respire</title>
   <meta name="description" content="Cohérence cardiaque, simplement.">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#090a22">
   <meta name="color-scheme" content="dark">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -21,7 +21,7 @@
   <main id="app" data-state="home">
     <header class="top">
       <button id="settingsBtn" class="icon-btn only-home" aria-label="Réglages">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16" stroke-opacity=".55"/><circle cx="15" cy="7" r="2.8" fill="currentColor" stroke="none"/><circle cx="9" cy="17" r="2.8" fill="currentColor" stroke="none"/></svg>
       </button>
       <button id="stopBtn" class="icon-btn only-session" aria-label="Arrêter la séance">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>
@@ -88,6 +88,17 @@
     </div>
 
     <div class="group">
+      <div class="group-label">Son</div>
+      <div class="seg" data-key="sound">
+        <button data-v="waves">Vagues</button>
+        <button data-v="wind">Vent</button>
+        <button data-v="cues">Repères</button>
+        <button data-v="off">Aucun</button>
+      </div>
+      <p class="note" id="soundNote">Une note douce marque chaque inspiration et chaque expiration.</p>
+    </div>
+
+    <div class="group">
       <div class="group-label">Ciel</div>
       <div class="seg" data-key="sky">
         <button data-v="auto">Auto</button>
@@ -103,12 +114,8 @@
         <span>Vibration</span>
         <input type="checkbox" class="toggle" id="vibToggle">
       </label>
-      <label class="row">
-        <span>Son du vent</span>
-        <input type="checkbox" class="toggle" id="soundToggle">
-      </label>
     </div>
-    <p class="note" id="vibNote" hidden>Sur iPhone, Safari ne laisse pas les sites vibrer pendant la séance. Active le son du vent pour être guidé les yeux fermés.</p>
+    <p class="note" id="vibNote" hidden>Sur iPhone, Safari ne laisse pas les sites vibrer pendant la séance. Choisissez un son pour être guidé les yeux fermés.</p>
 
     <button class="primary sheet-ok" id="closeSheet">OK</button>
   </aside>

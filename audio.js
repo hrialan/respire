@@ -1,40 +1,111 @@
-// Respire — le souffle du vent, généré en direct (aucun fichier audio).
+// Respire — le son, généré en direct (aucun fichier audio).
 //
-// Le souffle pilote le vent : à l'inspiration il se lève, s'éclaircit et se
-// met à siffler ; à l'expiration il retombe. Par-dessus, des rafales lentes et
-// irrégulières le rendent vivant, et il se déplace doucement dans l'espace.
+// Trois ambiances au choix, toutes guidées par le souffle :
+//   - les vagues : à l'inspiration, la vague se retire en montant (un
+//     chuintement qui gonfle) ; à l'expiration, elle déferle puis s'étale
+//     sur le sable, et l'écume pétille. Chaque vague est un peu différente ;
+//   - le vent : il se lève à l'inspiration, siffle dans les rafales, retombe
+//     à l'expiration ;
+//   - les repères seuls, sans fond sonore.
+// À chaque changement de phase, un ping de sonar : une brève impulsion de note
+// pure, qui résonne longuement dans l'eau profonde puis s'éteint. Plus aiguë
+// pour inspirer, plus grave pour expirer. On peut
+// respirer les yeux fermés.
 //
-// Couches (toutes à partir du même bruit rose) :
-//   - le corps : un grondement grave, filtré passe-bas ;
-//   - le souffle : une bande large qui monte avec l'inspiration ;
-//   - le sifflement : une bande étroite et résonante, surtout dans les rafales ;
-//   - la nappe : un accord chaud et ouvert (La2 Mi3 Si3 Do#4 Mi4), en fond.
+// Sous les vagues et le vent, une nappe d'accords qui s'ouvre à l'inspiration
+// et dont la couleur suit l'heure (lumineuse le jour, chaude au couchant,
+// profonde la nuit). À la fin de la séance, une cascade de notes cristallines ;
+// quand une baleine saute, son chant, lointain.
+//
+// Tout part du même bruit rose. Les notes passent par une réverbération
+// générée elle aussi, et le tout par un limiteur qui évite la saturation.
+//
+// API : Ambience.unlock(), start(mode, mood), update(souffle, enCours),
+// cue('in' | 'out'), celebrate(), whale(délai), stop(fondu), preview(mode, mood).
+// mode : 'waves' | 'wind' | 'cues' · mood : 'day' | 'sunset' | 'night'.
 (() => {
   'use strict';
 
-  const PAD_NOTES = [110, 164.81, 246.94, 277.18, 329.63];
-  const VOLUME = 2.5;   // overall level (≈ -22 dBFS RMS at full breath)
+  const VOLUME = 2.5;          // level of the noise beds (≈ -22 dBFS RMS at full breath)
+  const CUE_LEVEL = 0.09;      // the sonar ping at each change of phase
+  const CUE_IN = 880;          // A5: breathe in
+  const CUE_OUT = 659.25;      // E5, lower: breathe out
+  const CHORDS = {             // the pad, by time of day
+    day: [110, 164.81, 246.94, 277.18, 329.63],      // A2 E3 B3 C#4 E4: open, bright
+    sunset: [73.42, 110, 185, 220, 277.18],         // D2 A2 F#3 A3 C#4: warm
+    night: [110, 164.81, 246.94, 261.63, 329.63],    // A2 E3 B3 C4 E4: deep, a little minor
+  };
+  const SPARKLE = [880, 987.77, 1108.73, 1318.51, 1479.98, 1760, 1975.53, 2217.46];   // A major pentatonic
 
   let actx = null;
   let noise = null;
-  let live = null;   // the voice that follows the breath during a session
+  let reverb = null;           // shared input of the reverb (notes only)
+  let deep = null;             // shared input of the long, dark resonance of the pings
+  let master = null;           // everything goes through it: a limiter against clipping
+  let lastDrive = 0;           // when the breath last reached the audio graph (ms)
+  let live = null;             // the voice that follows the breath during a session
+  let busyUntil = 0;           // wall-clock time (ms) until which sound may still ring
+  let preview = null;          // the settings preview playing, if any: { voice, timer }
+
+  const between = (lo, hi) => lo + Math.random() * (hi - lo);
 
   // iOS mutes Web Audio when the ring/silent switch is on, unless the page
-  // declares itself as media playback (Safari 16.4+). Only done while the wind
+  // declares itself as media playback (Safari 16.4+). Only done while sound
   // is playing, so the app never interrupts the user's music otherwise.
   function setAudioSession(type) {
     try { if ('audioSession' in navigator) navigator.audioSession.type = type; } catch { /* unsupported */ }
   }
 
+  // Hand the audio session back once nothing is playing any more. Wall-clock
+  // time, not the audio clock: that one stops while iOS suspends the context.
+  function releaseLater(sec) {
+    busyUntil = Math.max(busyUntil, performance.now() + sec * 1000);
+    setTimeout(() => {
+      if (!live && !preview && performance.now() >= busyUntil - 50) setAudioSession('auto');
+    }, sec * 1000 + 100);
+  }
+
+  // Stop the settings preview at once (another choice, or a session starting).
+  function stopPreview() {
+    if (!preview) return;
+    clearInterval(preview.timer);
+    if (preview.voice) preview.voice.stop(0.4);
+    preview = null;
+  }
+
   // Must be called from a user gesture (iOS / autoplay policies): on start,
   // and again on resume, since iOS may suspend the context in between.
   function unlock() {
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return false;
+    // No webkitAudioContext fallback: the Safari versions that needed it could
+    // not chain connect() calls, and lack the audio session anyway.
+    if (!window.AudioContext) return false;
     setAudioSession('playback');
-    if (!actx) actx = new AC();
-    if (actx.state === 'suspended') actx.resume();
+    if (!actx) actx = new AudioContext();
+    if (actx.state !== 'running') actx.resume().catch(() => {});   // suspended, or interrupted (a phone call)
     return true;
+  }
+
+  // The way out: a limiter, so the loudest moment (a wave breaking as the ping
+  // rings) never clips.
+  function output() {
+    if (master) return master;
+    master = actx.createDynamicsCompressor();
+    master.threshold.value = -6;
+    master.knee.value = 3;
+    master.ratio.value = 20;
+    master.attack.value = 0.003;
+    master.release.value = 0.25;
+    master.connect(actx.destination);
+    return master;
+  }
+
+  // The heavy buffers, made in the tap that starts the sound rather than in
+  // the middle of an animation frame.
+  function prepare() {
+    output();
+    pinkNoise();
+    reverbIn();
+    deepIn();
   }
 
   // 8 s of stereo pink noise (Paul Kellet's filter), with a crossfaded loop seam.
@@ -80,9 +151,36 @@
   }
 
   // Stereo movement where supported (falls back to a plain gain).
-  function panner() {
-    return actx.createStereoPanner ? actx.createStereoPanner() : gain(1);
+  function panner(value = 0) {
+    if (!actx.createStereoPanner) return gain(1);
+    const p = actx.createStereoPanner();
+    p.pan.value = value;
+    return p;
   }
+
+  // A soft hall for the notes: dry and wet, the wet from a generated impulse.
+  function reverbIn() {
+    if (reverb) return reverb;
+    const len = Math.round(actx.sampleRate * 3.2);
+    const ir = actx.createBuffer(2, len, actx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      const k = Math.exp(-6.5 / len);                       // about -56 dB at the end
+      let env = 1;
+      for (let i = 0; i < len; i++) {
+        d[i] = (Math.random() * 2 - 1) * env;
+        env *= k;
+      }
+    }
+    const conv = actx.createConvolver();
+    conv.buffer = ir;
+    reverb = gain(1);
+    reverb.connect(output());                                  // dry
+    reverb.connect(conv).connect(gain(0.55)).connect(output());   // wet
+    return reverb;
+  }
+
+  /* ================= Beds: what follows the breath ================= */
 
   // Slow, irregular gusts: 0..1, never quite repeating.
   function gustAt(t) {
@@ -90,121 +188,382 @@
     return 0.5 + 0.5 * g;
   }
 
-  // Builds one voice, silent until driven by drive().
-  function createVoice() {
+  // The wind: a low body, a wide breath that rises with the in-breath, and a
+  // narrow resonant whistle, mostly in the gusts.
+  function wind(src, out) {
+    const bodyLp = filter('lowpass', 220, 0.5);
+    const body = gain(0);
+    src.connect(bodyLp).connect(body).connect(out);
+
+    const breathBp = filter('bandpass', 500, 0.8);
+    const breathG = gain(0);
+    const breathPan = panner();
+    src.connect(breathBp).connect(breathG).connect(breathPan).connect(out);
+
+    const whistleBp = filter('bandpass', 800, 14);
+    const whistleG = gain(0);
+    const whistlePan = panner();
+    src.connect(whistleBp).connect(whistleG).connect(whistlePan).connect(out);
+
+    return {
+      phase() {},
+      drive(s, playing) {
+        const t = actx.currentTime;
+        const tc = playing ? 0.12 : 0.6;
+        const gust = gustAt(t);
+        const e = s * (0.75 + 0.5 * gust);   // energy: the breath, pushed by the gusts
+        const pitch = e * (1 - 0.35 * e);      // pitch rises less near the top: no shrill peak
+        const on = playing ? 1 : 0;
+        const set = (param, value, k = tc) => param.setTargetAtTime(value, t, k);
+
+        set(bodyLp.frequency, 160 + 220 * pitch, 0.3);
+        set(body.gain, on * (0.1 + 0.12 * e));
+        set(breathBp.frequency, 380 + 900 * pitch + 120 * gust, 0.3);
+        set(breathG.gain, on * (0.04 + 0.2 * e));
+        set(whistleBp.frequency, 480 + 600 * pitch + 180 * gust, 0.4);
+        set(whistleG.gain, on * 0.07 * Math.pow(e, 1.8));
+        if (breathPan.pan) {
+          set(breathPan.pan, 0.35 * Math.sin(t * 0.07), 0.5);
+          set(whistlePan.pan, 0.6 * Math.sin(t * 0.11 + 2), 0.5);
+        }
+      },
+    };
+  }
+
+  // The sea. On the in-breath the wave draws back: a low swell and a hiss
+  // that rises and brightens. On the out-breath it breaks (a burst, from a
+  // slightly different place each time), then spreads over the sand, softer
+  // and duller as it ebbs, with the foam fizzing.
+  function waves(src, out) {
+    const bodyLp = filter('lowpass', 400, 0.6);               // the water's weight
+    const body = gain(0);
+    src.connect(bodyLp).connect(body).connect(out);
+
+    const hissBp = filter('bandpass', 1500, 0.7);             // backwash, then the wash
+    const hiss = gain(0);
+    const hissPan = panner();
+    src.connect(hissBp).connect(hiss).connect(hissPan).connect(out);
+
+    const foamHp = filter('highpass', 3500);                  // fizzing foam
+    const foam = gain(0);
+    src.connect(foamHp).connect(foam).connect(out);
+
+    const crashLp = filter('lowpass', 900, 0.4);              // the break itself
+    const crash = gain(0);
+    const crashPan = panner();
+    src.connect(crashLp).connect(crash).connect(crashPan).connect(out);
+
+    let phase = 'out';
+    let size = 1;                                              // each wave a little different
+
+    return {
+      phase(kind) {
+        phase = kind;
+        const t = actx.currentTime;
+        if (kind === 'out') {
+          size = between(0.75, 1.1);
+          crash.gain.cancelScheduledValues(t);
+          crash.gain.setTargetAtTime(0.38 * size, t, 0.12);
+          crash.gain.setTargetAtTime(0, t + 0.5, 0.9);
+          crashLp.frequency.cancelScheduledValues(t);
+          crashLp.frequency.setTargetAtTime(1500, t, 0.1);
+          crashLp.frequency.setTargetAtTime(380, t + 0.4, 1.2);
+          if (crashPan.pan) crashPan.pan.setTargetAtTime(between(-0.4, 0.4), t, 0.05);
+        } else if (hissPan.pan) {
+          hissPan.pan.setTargetAtTime(between(-0.3, 0.3), t, 1);
+        }
+      },
+      drive(s, playing) {
+        const t = actx.currentTime;
+        const on = playing ? 1 : 0;
+        const set = (param, value, k) => param.setTargetAtTime(value, t, playing ? k : 0.6);
+        if (phase === 'in') {
+          set(bodyLp.frequency, 250 + 500 * s, 0.3);
+          set(body.gain, on * (0.12 + 0.18 * s), 0.15);
+          set(hissBp.frequency, 900 + 1600 * s, 0.3);
+          set(hiss.gain, on * (0.03 + 0.16 * s * s), 0.15);
+          set(foam.gain, on * 0.01, 0.6);
+        } else {
+          const w = Math.pow(s, 0.7);
+          set(bodyLp.frequency, 220 + 900 * w, 0.4);
+          set(body.gain, on * (0.08 + 0.3 * w * size), 0.2);
+          set(hissBp.frequency, 700 + 1300 * w, 0.5);
+          set(hiss.gain, on * (0.02 + 0.14 * w * size), 0.2);
+          set(foam.gain, on * (0.005 + 0.05 * w * size), 0.8);
+        }
+        if (!playing) set(crash.gain, 0, 0.3);
+      },
+    };
+  }
+
+  // The pad: a soft chord whose upper notes open on the in-breath.
+  function pad(out, mood) {
+    const notes = CHORDS[mood] || CHORDS.day;
+    const lp = filter('lowpass', 600);
+    const level = gain(0);
+    lp.connect(level).connect(out);
+    const upper = gain(0.4);
+    upper.connect(lp);
+    const oscs = [];
+    notes.forEach((f, i) => {
+      for (const detune of [-0.35, 0.35]) {
+        const o = actx.createOscillator();
+        o.frequency.value = f + detune;
+        o.connect(gain(0.5 / (i + 1.5))).connect(i >= 3 ? upper : lp);
+        o.start();
+        oscs.push(o);
+      }
+    });
+    return {
+      drive(s, playing) {
+        const t = actx.currentTime;
+        const on = playing ? 1 : 0;
+        lp.frequency.setTargetAtTime(500 + 900 * s, t, 0.4);
+        level.gain.setTargetAtTime(on * (0.018 + 0.012 * s), t, 0.4);
+        upper.gain.setTargetAtTime(0.4 + 0.6 * s, t, 0.4);
+      },
+      stop(end) {
+        oscs.forEach((o) => o.stop(end));
+      },
+    };
+  }
+
+  // One voice: a bed (waves or wind) and the pad, silent until driven.
+  function createVoice(mode, mood) {
     const t = actx.currentTime;
     const out = gain(0);
     out.gain.setTargetAtTime(VOLUME, t, 0.8);
-    out.connect(actx.destination);
+    out.connect(output());
 
     const src = actx.createBufferSource();
     src.buffer = pinkNoise();
     src.loop = true;
     src.loopEnd = noise.duration - 0.5;
-    const clean = filter('highpass', 40);
+    const clean = filter('highpass', 30);
     src.connect(clean);
-
-    const bodyLp = filter('lowpass', 220, 0.5);
-    const body = gain(0);
-    clean.connect(bodyLp).connect(body).connect(out);
-
-    const breathBp = filter('bandpass', 500, 0.8);
-    const breathG = gain(0);
-    const breathPan = panner();
-    clean.connect(breathBp).connect(breathG).connect(breathPan).connect(out);
-
-    const whistleBp = filter('bandpass', 800, 14);
-    const whistleG = gain(0);
-    const whistlePan = panner();
-    clean.connect(whistleBp).connect(whistleG).connect(whistlePan).connect(out);
     src.start();
 
-    const pad = gain(0);
-    const padLp = filter('lowpass', 700);
-    padLp.connect(pad).connect(out);
-    const oscs = [];
-    PAD_NOTES.forEach((f, i) => {
-      for (const detune of [-0.35, 0.35]) {
-        const o = actx.createOscillator();
-        o.frequency.value = f + detune;
-        o.connect(gain(0.5 / (i + 1.5))).connect(padLp);
-        o.start();
-        oscs.push(o);
-      }
-    });
+    const bed = mode === 'wind' ? wind(clean, out) : waves(clean, out);
+    const chord = pad(out, mood);
 
     return {
-      bodyLp, body, breathBp, breathG, breathPan, whistleBp, whistleG, whistlePan, pad,
+      phase: (kind) => bed.phase(kind),
+      drive(s, playing) {
+        bed.drive(s, playing);
+        chord.drive(s, playing);
+      },
       stop(fadeSec) {
         const now = actx.currentTime;
         out.gain.cancelScheduledValues(now);
         out.gain.setTargetAtTime(0, now, fadeSec / 4);
         const end = now + fadeSec + 0.3;
         src.stop(end);
-        oscs.forEach((o) => o.stop(end));
+        chord.stop(end);
+        setTimeout(() => out.disconnect(), (fadeSec + 0.6) * 1000);
       },
     };
   }
 
-  // s: breath level 0..1. playing=false lets the wind die down (pause).
-  function drive(v, s, playing) {
-    const t = actx.currentTime;
-    const tc = playing ? 0.12 : 0.6;
-    const gust = gustAt(t);
-    const e = s * (0.75 + 0.5 * gust);   // energy: the breath, pushed by the gusts
-    const pitch = e * (1 - 0.35 * e);      // pitch rises less near the top: no shrill peak
-    const on = playing ? 1 : 0;
-    const set = (param, value, k = tc) => param.setTargetAtTime(value, t, k);
+  // Cues only: nothing follows the breath, the pings do the guiding.
+  const quietVoice = { phase() {}, drive() {}, stop() {} };
 
-    set(v.bodyLp.frequency, 160 + 220 * pitch, 0.3);
-    set(v.body.gain, on * (0.1 + 0.12 * e));
+  /* ================= Notes ================= */
 
-    set(v.breathBp.frequency, 380 + 900 * pitch + 120 * gust, 0.3);
-    set(v.breathG.gain, on * (0.04 + 0.2 * e));
-
-    set(v.whistleBp.frequency, 480 + 600 * pitch + 180 * gust, 0.4);
-    set(v.whistleG.gain, on * 0.07 * Math.pow(e, 1.8));
-
-    if (v.breathPan.pan) {
-      set(v.breathPan.pan, 0.35 * Math.sin(t * 0.07), 0.5);
-      set(v.whistlePan.pan, 0.6 * Math.sin(t * 0.11 + 2), 0.5);
+  // The deep water a ping rings in: a long (4.5 s), dark, smooth resonance.
+  // Not an echo: a single tail that fades, as the sea sends the sound back.
+  function deepIn() {
+    if (deep) return deep;
+    const len = Math.round(actx.sampleRate * 4.5);
+    const ir = actx.createBuffer(2, len, actx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      const k = Math.exp(-6.9 / len);                        // about -60 dB at the end
+      let env = 1, lp = 0;
+      for (let i = 0; i < len; i++) {
+        lp += 0.18 * ((Math.random() * 2 - 1) - lp);        // darker: high frequencies damped
+        d[i] = lp * env * 2.2;
+        env *= k;
+      }
     }
-    set(v.pad.gain, on * (0.018 + 0.01 * s), 0.4);
+    const conv = actx.createConvolver();
+    conv.buffer = ir;
+    deep = gain(1);
+    deep.connect(gain(0.5)).connect(output());              // the ping itself
+    deep.connect(conv).connect(gain(1.1)).connect(output()); // its resonance
+    return deep;
   }
+
+  // The cue: one sonar ping. A short, even pulse of pure tone (about 0.2 s,
+  // cut cleanly), its pitch sinking very slightly, ringing on in the deep
+  // water. glide: a slight rise or fall of pitch at the very start.
+  function ping(freq, level, when, glide = 1, pan = 0) {
+    const out = panner(pan);
+    out.connect(deepIn());
+    const PULSE = 0.2;
+    for (const [ratio, amp] of [[1, 1], [2, 0.05]]) {        // the tone and a touch of octave
+      const o = actx.createOscillator();
+      const f = freq * ratio;
+      o.frequency.setValueAtTime(f * glide, when);
+      o.frequency.exponentialRampToValueAtTime(f, when + 0.04);
+      o.frequency.exponentialRampToValueAtTime(f * 0.992, when + PULSE);
+      const g = gain(0);
+      g.gain.setValueAtTime(0, when);
+      g.gain.linearRampToValueAtTime(amp * level, when + 0.008);
+      g.gain.setValueAtTime(amp * level, when + PULSE - 0.03);
+      g.gain.linearRampToValueAtTime(0, when + PULSE);
+      o.connect(g).connect(out);
+      o.onended = () => g.disconnect();
+      o.start(when);
+      o.stop(when + PULSE + 0.05);
+    }
+  }
+
+  // A small bell, for the end-of-session cascade.
+  function bell(freq, level, when, pan) {
+    const out = panner(pan);
+    out.connect(reverbIn());
+    for (const [ratio, amp, decay] of [[1, 1, 2.2], [2, 0.4, 1.5], [3, 0.2, 1], [4.2, 0.12, 0.6]]) {
+      const o = actx.createOscillator();
+      o.frequency.value = freq * ratio;
+      const g = gain(0);
+      g.gain.setValueAtTime(0, when);
+      g.gain.linearRampToValueAtTime(amp * level, when + 0.005);
+      g.gain.setTargetAtTime(0, when + 0.005, decay / 3);
+      o.connect(g).connect(out);
+      o.onended = () => g.disconnect();
+      o.start(when);
+      o.stop(when + decay * 1.6);
+    }
+  }
+
+  // One call of a whale, far away: a slow gliding moan with a little vibrato.
+  function whaleCall(when, freqs, dur, level) {
+    const out = filter('lowpass', 900);
+    out.connect(reverbIn());
+    const env = gain(0);
+    env.connect(out);
+    env.gain.setValueAtTime(0, when);
+    env.gain.linearRampToValueAtTime(level, when + dur * 0.25);
+    env.gain.setTargetAtTime(0, when + dur * 0.6, dur * 0.15);
+
+    const vib = actx.createOscillator();
+    vib.frequency.value = 4.5;
+    const vibDepth = gain(3);
+    vib.connect(vibDepth);
+
+    const formant = filter('bandpass', 520, 3);
+    formant.connect(env);
+    for (const [type, mult, amp] of [['sine', 1, 1], ['triangle', 2, 0.5]]) {
+      const o = actx.createOscillator();
+      o.type = type;
+      o.frequency.setValueAtTime(freqs[0] * mult, when);
+      freqs.forEach((f, i) => {
+        if (i) o.frequency.exponentialRampToValueAtTime(f * mult, when + (dur * i) / (freqs.length - 1));
+      });
+      vibDepth.connect(o.frequency);
+      const g = gain(amp);
+      o.connect(g).connect(type === 'sine' ? env : formant);
+      o.start(when);
+      o.stop(when + dur + 1);
+    }
+    vib.start(when);
+    vib.stop(when + dur + 1);
+  }
+
+  /* ================= API ================= */
 
   window.Ambience = {
     unlock,
 
-    start() {
-      if (!live && unlock()) live = createVoice();
+    start(mode = 'waves', mood = 'day') {
+      if (live || !unlock()) return;
+      stopPreview();
+      prepare();
+      live = mode === 'cues' ? quietVoice : createVoice(mode, mood);
     },
 
+    // Called every animation frame; the audio graph only needs about 30 updates
+    // a second (its time constants are 0.12 s or more), so the rest are skipped.
     update(s, playing = true) {
-      if (live) drive(live, s, playing);
+      if (!live) return;
+      const now = performance.now();
+      if (playing && now - lastDrive < 33) return;
+      lastDrive = now;
+      live.drive(s, playing);
+    },
+
+    // A change of phase: the ping, and the wave turns.
+    cue(kind) {
+      if (!live) return;
+      live.phase(kind);
+      const t = actx.currentTime + 0.01;
+      if (kind === 'in') ping(CUE_IN, CUE_LEVEL, t, 0.97);
+      else ping(CUE_OUT, CUE_LEVEL, t, 1.03);
+    },
+
+    // End of a session: a cascade of crystal notes rising, then a last, low ping.
+    celebrate() {
+      if (!live) return;
+      const t = actx.currentTime + 0.3;
+      SPARKLE.forEach((f, i) => bell(f, 0.035, t + i * 0.16 + between(0, 0.05), between(-0.6, 0.6)));
+      ping(440, CUE_LEVEL * 1.2, t + SPARKLE.length * 0.16 + 0.2);
+      releaseLater(9);
+    },
+
+    // A whale breaching (a rare moment): its song, from far away. Only while
+    // a session is playing, or its last notes still ring.
+    whale(delay = 0) {
+      if (!actx || (!live && performance.now() > busyUntil)) return;
+      const t = actx.currentTime + delay + 0.6;
+      whaleCall(t, [170, 290, 230], 2.6, 0.05);
+      whaleCall(t + 3.2, [260, 150], 2.4, 0.04);
+      releaseLater(delay + 9);
     },
 
     stop(fadeSec = 1.2) {
       if (!live) return;
       live.stop(fadeSec);
       live = null;
-      setTimeout(() => { if (!live) setAudioSession('auto'); }, (fadeSec + 0.5) * 1000);
+      releaseLater(fadeSec + 0.5);
     },
 
-    // One slow breath in and out, to preview the sound from the settings.
-    preview() {
-      if (!unlock()) return;
-      const v = createVoice();
+    // One slow breath in and out, to hear a choice from the settings.
+    preview(mode = 'waves', mood = 'day') {
+      if (live || !unlock()) return;
+      stopPreview();
+      prepare();
+      const t = actx.currentTime + 0.05;
+      if (mode === 'cues') {
+        ping(CUE_IN, CUE_LEVEL, t, 0.97);
+        ping(CUE_OUT, CUE_LEVEL, t + 2.5, 1.03);
+        releaseLater(7);
+        return;
+      }
+      const v = createVoice(mode, mood);
+      const DURATION = 6000;
       const t0 = performance.now();
-      const DURATION = 5000;
-      const timer = setInterval(() => {
+      let half = false;
+      v.phase('in');
+      ping(CUE_IN, CUE_LEVEL, t, 0.97);
+      releaseLater(DURATION / 1000 + 5);   // keep the session playing until it has faded
+      const p = { voice: v, timer: 0 };
+      preview = p;
+      p.timer = setInterval(() => {
+        if (preview !== p) return;
         const k = (performance.now() - t0) / DURATION;
         if (k >= 1) {
-          clearInterval(timer);
+          clearInterval(p.timer);
           v.stop(1.5);
-          setTimeout(() => { if (!live) setAudioSession('auto'); }, 2000);
+          preview = null;
+          releaseLater(5);
           return;
         }
-        drive(v, Math.sin(k * Math.PI), true);
+        if (k >= 0.5 && !half) {
+          half = true;
+          v.phase('out');
+          ping(CUE_OUT, CUE_LEVEL, actx.currentTime + 0.01, 1.03);
+        }
+        v.drive(Math.sin(k * Math.PI), true);
       }, 50);
     },
   };

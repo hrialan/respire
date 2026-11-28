@@ -1,24 +1,42 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Le hublot-souffle. Mêmes formes et couleurs que tools/make_icons.py. -->
   <defs>
-    <clipPath id="o"><circle cx="50" cy="50" r="34"/></clipPath>
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2862"/><stop offset=".55" stop-color="#aa5a78"/><stop offset="1" stop-color="#ff8c5a"/></linearGradient>
-    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6a5590"/><stop offset="1" stop-color="#0c0e26"/></linearGradient>
-    <radialGradient id="sun"><stop offset="0" stop-color="#fffaeb"/><stop offset=".45" stop-color="#ffd8a8"/><stop offset="1" stop-color="#ffa064" stop-opacity="0"/></radialGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1c1d57"/><stop offset="1" stop-color="#090a22"/></linearGradient>
+    <radialGradient id="haloV" cx="50" cy="45" r="42" gradientUnits="userSpaceOnUse"><stop offset=".55" stop-color="#9b7bff" stop-opacity=".26"/><stop offset="1" stop-color="#9b7bff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="haloC" cx="50" cy="56" r="42" gradientUnits="userSpaceOnUse"><stop offset=".55" stop-color="#5fe0ff" stop-opacity=".26"/><stop offset="1" stop-color="#5fe0ff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="sky" x1="0" y1="21" x2="0" y2="56" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7a68ff"/><stop offset=".6" stop-color="#d69ad8"/><stop offset="1" stop-color="#ffc6a2"/></linearGradient>
+    <radialGradient id="sunGlow" cx="63" cy="55" r="15" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff2dc" stop-opacity=".85"/><stop offset=".35" stop-color="#ffc79a" stop-opacity=".45"/><stop offset="1" stop-color="#ff9fb0" stop-opacity="0"/></radialGradient>
+    <radialGradient id="sun" cx="63" cy="55" r="5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ffdcb0"/></radialGradient>
+    <linearGradient id="sea" x1="0" y1="45" x2="0" y2="79" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#4fe6e6"/><stop offset=".45" stop-color="#1699c4"/><stop offset="1" stop-color="#0a3c78"/></linearGradient>
+    <radialGradient id="sheen" cx="40" cy="35" r="22" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="glint" cx="35" cy="46.6" r="5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="rim" x1="25" y1="25" x2="75" y2="75" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8ff3ff"/><stop offset=".5" stop-color="#ad8dff"/><stop offset="1" stop-color="#ff9fd2"/></linearGradient>
+    <filter id="soft" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="1.6"/></filter>
+    <filter id="rimGlow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="1.2"/></filter>
+    <clipPath id="orb"><circle cx="50" cy="50" r="29"/></clipPath>
   </defs>
-  <rect width="100" height="100" rx="22" fill="#0a0716"/>
-  <g clip-path="url(#o)">
-    <rect x="16" y="16" width="68" height="36" fill="url(#sky)"/>
-    <circle cx="50" cy="44" r="9" fill="url(#sun)"/>
-    <path d="M14 51 C 26 48, 36 48, 48 51 S 72 54, 86 50 V86 H14 Z" fill="url(#sea)"/>
-    <path d="M14 51 C 26 48, 36 48, 48 51 S 72 54, 86 50" fill="none" stroke="#ffe6d7" stroke-opacity=".75" stroke-width="1.2"/>
-    <g transform="translate(33 49) scale(5.2)" fill="#241632">
-      <path d="M-.6 0H.62L.45.16H-.42Z"/>
-      <path d="M.02-1.08Q.42-.5.5-.1H.02Z"/>
-      <path d="M-.06-.92V-.12H-.5Z" fill-opacity=".85"/>
+  <rect width="100" height="100" rx="22" fill="url(#bg)"/>
+  <circle cx="50" cy="45" r="42" fill="url(#haloV)"/>
+  <circle cx="50" cy="56" r="42" fill="url(#haloC)"/>
+  <g clip-path="url(#orb)">
+    <rect x="21" y="21" width="58" height="58" fill="url(#sky)"/>
+    <!-- three little stars -->
+    <g fill="#fff">
+      <path d="M37 27.8 Q37 31 39.2 31 Q37 31 37 34.2 Q37 31 34.8 31 Q37 31 37 27.8 Z" fill-opacity=".95"/>
+      <path d="M58 26.6 Q58 28.6 59.4 28.6 Q58 28.6 58 30.6 Q58 28.6 56.6 28.6 Q58 28.6 58 26.6 Z" fill-opacity=".8"/>
+      <path d="M47 36.2 Q47 37.6 48 37.6 Q47 37.6 47 39 Q47 37.6 46 37.6 Q47 37.6 47 36.2 Z" fill-opacity=".65"/>
     </g>
-    <g stroke="#ffbe82" stroke-linecap="round" stroke-width="1.4">
-      <path d="M47 57h6M45 63h9M44 70h12" stroke-opacity=".8"/>
-    </g>
+    <!-- the sun setting in the trough of the wave -->
+    <rect x="21" y="21" width="58" height="58" fill="url(#sunGlow)"/>
+    <circle cx="63" cy="55" r="5" fill="url(#sun)"/>
+    <path d="M18 53.5 C 30 44.5, 40 44, 50 53 S 70 62.5, 82 53.5 V82 H18 Z" fill="url(#sea)"/>
+    <rect x="21" y="21" width="58" height="58" fill="url(#sheen)"/>
+    <!-- the wave, the breath: a soft glow under a crisp line, edge to edge -->
+    <path d="M18 53.5 C 30 44.5, 40 44, 50 53 S 70 62.5, 82 53.5" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="5" filter="url(#soft)"/>
+    <path d="M18 53.5 C 30 44.5, 40 44, 50 53 S 70 62.5, 82 53.5" fill="none" stroke="#fff" stroke-width="2.8"/>
+    <circle cx="35" cy="46.6" r="5" fill="url(#glint)"/>
   </g>
-  <circle cx="50" cy="50" r="33.6" fill="none" stroke="#ffbe96" stroke-opacity=".35" stroke-width=".8"/>
+  <!-- iridescent edge of the glass, with its glow -->
+  <circle cx="50" cy="50" r="29" fill="none" stroke="url(#rim)" stroke-opacity=".6" stroke-width="3" filter="url(#rimGlow)"/>
+  <circle cx="50" cy="50" r="29" fill="none" stroke="url(#rim)" stroke-width="1.3"/>
 </svg>
