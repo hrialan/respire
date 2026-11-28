@@ -17,7 +17,7 @@ Cohérence cardiaque, simplement. Une webapp installable : une mer abstraite dan
 - **Une fête à la fin** : quand la séance se termine, des lumières s'envolent du hublot, l'aura s'illumine, et un moment rare arrive pour toi.
 - **Fluide partout** : si le téléphone peine, la scène allège d'elle-même ses effets les plus coûteux.
 - **Vibrations (Android)** : une impulsion à l'inspiration, deux à l'expiration, et un motif en fin de séance. Sur iPhone, Safari ne permet pas aux sites de vibrer pendant la séance : c'est alors le son qui guide.
-- **Son du vent (optionnel)** : un vent généré en direct, qui se lève à l'inspiration et retombe à l'expiration. Rafales irrégulières, léger sifflement, mouvement gauche-droite et une nappe chaude en fond. Le son joue même quand l'iPhone est en mode silencieux.
+- **Le son (au choix)** : des **vagues** qui se retirent à l'inspiration et déferlent à l'expiration, chacune un peu différente ; ou le **vent**, qui se lève et retombe avec le souffle ; ou seulement les **repères**. À chaque changement de phase, un bol chantant effleuré (une note claire qui monte pour inspirer, une note grave pour expirer) : on peut respirer les yeux fermés. En fond, une nappe d'accords qui s'ouvre à l'inspiration et dont la couleur suit l'heure. À la fin, une cascade de notes cristallines ; quand une baleine saute, son chant lointain. Tout est généré en direct, sans fichier audio, et joue même quand l'iPhone est en mode silencieux.
 - L'écran reste allumé pendant la séance. L'app fonctionne hors ligne et compte tes séances du jour.
 
 **Réglages** : durée (3, 5, 10 ou 15 min), rythme (5·5, 4·6, 4·4 ou personnalisé), ciel, vibration, son.
@@ -53,12 +53,12 @@ Paramètres d'URL utiles pour tester (ils se combinent : `?h=23&moment`) :
 | `style.css` | mise en page, panneau de réglages, états (`data-state` sur `#app`), arrivée du texte et du bouton |
 | `app.js` | moteur de séance (machine à états calée sur l'horloge), réglages, vibrations, verrouillage de l'écran |
 | `scene.js` | toute la scène sur un `<canvas>` plein écran : palettes du ciel selon l'heure, vagues, lumière, visiteurs, faune, magie (aura, lucioles, aurore), moments rares, fête de fin. La couleur d'accent de l'interface suit la palette |
-| `audio.js` | son du vent en Web Audio : bruit rose filtré en plusieurs bandes (corps, souffle, sifflement) et nappe d'accords |
+| `audio.js` | le son en Web Audio : vagues ou vent (bruit rose filtré en plusieurs bandes), nappe d'accords selon l'heure, bols chantants, cloches et chant de baleine dans une réverbération générée |
 | `sw.js` | service worker : réseau d’abord (toujours à jour en ligne), cache hors ligne |
 | `manifest.webmanifest` | métadonnées de la PWA |
 | `icons/` | icônes : le hublot-souffle (un hublot coupé par une vague, qui est aussi la courbe d'une respiration). Les PNG sont générés par `tools/make_icons.py`, le SVG est fait à la main avec les mêmes formes et couleurs |
 
-Le flux d'une image : `app.js` calcule à chaque frame le niveau du souffle (0 = poumons vides, 1 = pleins). Il le passe à `Scene.draw()` (taille de l'orbe, marée, et tout ce qui suit le souffle) et à `Ambience.update()` (force et timbre du vent). À la fin d'une séance, `app.js` appelle `Scene.celebrate()`.
+Le flux d'une image : `app.js` calcule à chaque frame le niveau du souffle (0 = poumons vides, 1 = pleins). Il le passe à `Scene.draw()` (taille de l'orbe, marée, et tout ce qui suit le souffle) et à `Ambience.update()` (force et timbre des vagues ou du vent). À chaque changement de phase, il appelle `Ambience.cue()` (le bol chantant). À la fin d'une séance, il appelle `Scene.celebrate()` et `Ambience.celebrate()`. Quand une baleine saute, la scène le signale (`Scene.onMoment`) et `app.js` joue son chant.
 
 ### Régénérer les icônes
 

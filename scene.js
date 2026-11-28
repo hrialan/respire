@@ -14,7 +14,8 @@
 // les images arrivent trop lentement, la scène allège ses effets d'elle-même.
 //
 // API : Scene.draw(breath 0..1, tempsEnSecondes), Scene.setSky(mode),
-// Scene.celebrate() (fin de séance).
+// Scene.celebrate() (fin de séance), Scene.mood() (ambiance du ciel pour le
+// son), Scene.onMoment(fn) (prévenu à chaque moment rare).
 //
 // Paramètres d'URL pour le développement : ?h=19 force l'heure (en mode Auto),
 // ?moment amène un moment rare toutes les 25 s, ?fete joue la fête de fin.
@@ -996,6 +997,7 @@
   const TEST_PARTY = params.has('fete');
 
   const rare = { next: TEST_MOMENTS ? 5 : between(70, 200), items: [] };
+  let momentHook = null;       // told of each rare moment (the sound follows the whale)
 
   function startRare(t, p, level, festive) {
     const options = [['breach', 3]];
@@ -1007,6 +1009,7 @@
     } else if (kind === 'breach') {
       const jd = between(3, 3.6);
       rare.items.push({ kind, t0: t + (festive ? 1 : 0), jd, dur: jd + 2, dir: eitherWay(), x: between(-0.45, -0.05), size: between(0.9, 1.05) });
+      if (momentHook) momentHook('breach', festive ? 1 : 0);
     } else {
       rare.items.push({ kind, t0: t, dur: 7, dir: eitherWay() });
     }
@@ -1664,6 +1667,17 @@
     // End of a session: a burst of lights, the halo flares, and a rare moment.
     celebrate() {
       partyPending = true;
+    },
+
+    // The mood of the sky right now, for the sound: 'day' | 'sunset' | 'night'.
+    mood() {
+      if (palette.stars > 0.5) return 'night';
+      return palette.sun > 0.5 && palette.alt < 0.3 ? 'sunset' : 'day';
+    },
+
+    // fn(kind, delaySeconds) is called when a rare moment starts.
+    onMoment(fn) {
+      momentHook = fn;
     },
   };
 })();

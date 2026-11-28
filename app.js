@@ -18,7 +18,7 @@
 
   const SETTINGS_KEY = 'respire.settings';
   const STATS_KEY = 'respire.stats';
-  const DEFAULTS = { duration: 5, rhythm: '5-5', inhale: 5, exhale: 5, vibration: true, sound: false, sky: 'auto' };
+  const DEFAULTS = { duration: 5, rhythm: '5-5', inhale: 5, exhale: 5, vibration: true, sound: 'off', sky: 'auto' };
 
   const store = {
     get(key, fallback) {
@@ -30,6 +30,10 @@
   };
 
   const settings = { ...DEFAULTS, ...store.get(SETTINGS_KEY, {}) };
+  // The sound used to be on or off (the wind only). Whoever had it on gets the waves.
+  if (typeof settings.sound === 'boolean') settings.sound = settings.sound ? 'waves' : 'off';
+  if (!['waves', 'wind', 'cues', 'off'].includes(settings.sound)) settings.sound = 'off';
+  const soundOn = () => settings.sound !== 'off';
 
   function updateSettings(patch) {
     Object.assign(settings, patch);
@@ -147,7 +151,7 @@
     track(`reglages/duree-${settings.duration}`);
     track(`reglages/rythme-${rhythmLabel}`);
     track(`reglages/ciel-${settings.sky}`);
-    track(`reglages/son-${settings.sound ? 'oui' : 'non'}`);
+    track(`reglages/son-${settings.sound}`);
     track(`reglages/vibration-${settings.vibration ? 'oui' : 'non'}`);
   }
 
@@ -185,7 +189,7 @@
   function startSession() {
     if (state !== 'home') return;
     closeSheet();
-    if (settings.sound) Ambience.start();
+    if (soundOn()) Ambience.start(settings.sound, Scene.mood());
     keepAwake();
 
     const [inh, exh] = rhythm();
@@ -238,7 +242,7 @@
     run.remaining = -1;
     run.quietCue = true;
     setState('running');
-    if (settings.sound) Ambience.unlock();   // iOS may have suspended audio meanwhile
+    if (soundOn()) Ambience.unlock();   // iOS may have suspended audio meanwhile
     keepAwake();
   }
 
@@ -250,6 +254,7 @@
     setProgress(1);
     haptic('end');
     Scene.celebrate();
+    Ambience.celebrate();   // before stop(): the notes need the session still playing
     Ambience.stop(4);
     allowSleep();
     setPhase('Séance terminée');
@@ -287,7 +292,10 @@
     if (key !== run.phaseKey) {
       run.phaseKey = key;
       if (run.quietCue) run.quietCue = false;
-      else haptic(inhaling ? 'in' : 'out');
+      else {
+        haptic(inhaling ? 'in' : 'out');
+        Ambience.cue(inhaling ? 'in' : 'out');
+      }
       setPhase(inhaling ? 'Inspirez' : 'Expirez');
     }
 
@@ -328,7 +336,6 @@
   const inhaleR = $('inhaleR');
   const exhaleR = $('exhaleR');
   const vibToggle = $('vibToggle');
-  const soundToggle = $('soundToggle');
 
   function renderSettings() {
     for (const seg of document.querySelectorAll('.seg')) {
@@ -346,8 +353,8 @@
     $('exhaleV').textContent = `${fmt(settings.exhale)} s`;
     $('rhythmNote').textContent = `${fmt(60 / (i + x))} respirations par minute`;
     vibToggle.checked = settings.vibration;
-    soundToggle.checked = settings.sound;
     $('vibNote').hidden = canVibrate;
+    $('soundNote').hidden = !soundOn();
     Scene.setSky(settings.sky);
     if (state === 'home') subEl.textContent = homeSummary();
   }
@@ -372,6 +379,7 @@
       const key = seg.dataset.key;
       updateSettings({ [key]: key === 'duration' ? Number(b.dataset.v) : b.dataset.v });
       haptic('tap');
+      if (key === 'sound' && soundOn()) Ambience.preview(settings.sound, Scene.mood());
     });
   }
 
@@ -381,14 +389,17 @@
     updateSettings({ vibration: vibToggle.checked });
     haptic('in');
   });
-  soundToggle.addEventListener('change', () => {
-    updateSettings({ sound: soundToggle.checked });
-    if (settings.sound) Ambience.preview();
-  });
 
   $('settingsBtn').addEventListener('click', openSheet);
   $('closeSheet').addEventListener('click', closeSheet);
   backdrop.addEventListener('click', closeSheet);
+
+  // A whale breaching during a session (or its celebration): its song. Not in
+  // 'cues' mode, which is meant to be only the bowls.
+  Scene.onMoment((kind, delay) => {
+    const ambient = settings.sound === 'waves' || settings.sound === 'wind';
+    if (kind === 'breach' && ambient && (state === 'running' || state === 'done')) Ambience.whale(delay);
+  });
 
   /* ================= Controls ================= */
 

@@ -18,7 +18,7 @@ Respire : une webapp de cohérence cardiaque (PWA), en HTML, CSS et JavaScript, 
 
 ## Architecture : les points piégeux
 
-- `app.js` calcule le souffle (0..1) à partir de l'horloge, à chaque frame. Il le passe à `Scene.draw()` et à `Ambience.update()`. À la fin d'une séance, il appelle `Scene.celebrate()`. Les états sont dans `data-state` sur `#app` : `home → countdown → running ⇄ paused → done`.
+- `app.js` calcule le souffle (0..1) à partir de l'horloge, à chaque frame. Il le passe à `Scene.draw()` et à `Ambience.update()`. À chaque changement de phase, il appelle `Ambience.cue()`. À la fin d'une séance, il appelle `Scene.celebrate()` puis `Ambience.celebrate()` (avant `Ambience.stop()`). Le réglage `sound` vaut `waves`, `wind`, `cues` ou `off` (l'ancien booléen est migré au chargement). Les états sont dans `data-state` sur `#app` : `home → countdown → running ⇄ paused → done`.
 - L'orbe est **dessinée sur le canvas plein écran** (`scene.js`). L'anneau de progression, lui, est un SVG dans le DOM (`#orbAnchor`). La scène relit la position de `#orbAnchor` à chaque frame pour que les deux restent superposés. Ne remplace pas cette lecture par un `ResizeObserver` : l'ancre peut bouger sans changer de taille, par exemple quand la légende change de hauteur.
 - `scene.js` aligne la couleur de fond de la page (`--bg`) et le `theme-color` sur la palette du ciel. Ça évite qu'une bande noire apparaisse sous les barres de Safari ou sous la barre d'accueil de l'iPhone.
 
