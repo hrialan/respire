@@ -249,6 +249,7 @@
     setState('done');
     setProgress(1);
     haptic('end');
+    Scene.celebrate();
     Ambience.stop(4);
     allowSleep();
     setPhase('Séance terminée');

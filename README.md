@@ -12,6 +12,10 @@ Cohérence cardiaque, simplement. Une webapp installable : une mer abstraite dan
 - **Des visiteurs** : des bateaux (voilier, dériveur, chalutier, goélette) et des mouettes traversent l’horizon au hasard : seuls ou à plusieurs, dans un sens ou dans l’autre, près ou au loin, et la nuit une étoile filante passe de temps en temps.
 - **Une faune de rêve** : sous l'eau passent des bancs de poissons, des méduses, une baleine constellée de lumières, une raie manta, et des dauphins sautent hors de l'eau. La nuit, tout luit.
 - **De la magie** : une aura irisée tourne autour du hublot et respire avec lui, des lucioles et des embruns lumineux montent doucement, le soleil rayonne et son reflet scintille, et parfois un arc-en-ciel apparaît. À l'ouverture, la scène sort du noir et le hublot s'ouvre dans un anneau de lumière.
+- **Une scène qui respire avec toi** : pendant la séance, les lucioles montent quand tu inspires et flottent quand tu expires, l'aurore s'intensifie, et la lumière se réchauffe à l'inspiration puis s'apaise à l'expiration.
+- **Des moments rares** : de temps en temps, une baleine saute hors de l'eau, une vague de lumière traverse le plancton, ou une pluie d'étoiles filantes traverse la nuit.
+- **Une fête à la fin** : quand la séance se termine, des lumières s'envolent du hublot, l'aura s'illumine, et un moment rare arrive pour toi.
+- **Fluide partout** : si le téléphone peine, la scène allège d'elle-même ses effets les plus coûteux.
 - **Vibrations (Android)** : une impulsion à l'inspiration, deux à l'expiration, et un motif en fin de séance. Sur iPhone, Safari ne permet pas aux sites de vibrer pendant la séance : c'est alors le son qui guide.
 - **Son du vent (optionnel)** : un vent généré en direct, qui se lève à l'inspiration et retombe à l'expiration. Rafales irrégulières, léger sifflement, mouvement gauche-droite et une nappe chaude en fond. Le son joue même quand l'iPhone est en mode silencieux.
 - L'écran reste allumé pendant la séance. L'app fonctionne hors ligne et compte tes séances du jour.
@@ -33,26 +37,28 @@ Pas de dépendance ni de build : HTML, CSS et JavaScript, rien d'autre.
 uv run python -m http.server 8000    # → http://localhost:8000
 ```
 
-Paramètre d'URL utile pour tester :
+Paramètres d'URL utiles pour tester (ils se combinent : `?h=23&moment`) :
 
 | Paramètre | Effet |
 | --- | --- |
 | `?h=19` | force l'heure du ciel (en mode Auto) : `7` aube, `13` jour, `19` couchant, `23` nuit |
+| `?moment` | un moment rare toutes les 25 s (baleine qui saute, vague de plancton lumineux, pluie d'étoiles filantes) |
+| `?fete` | joue la fête de fin de séance 4 s après le chargement |
 
 ### Organisation
 
 | Fichier | Rôle |
 | --- | --- |
 | `index.html` | structure : scène, légende, boutons, panneau de réglages |
-| `style.css` | mise en page, panneau de réglages, états (`data-state` sur `#app`) |
+| `style.css` | mise en page, panneau de réglages, états (`data-state` sur `#app`), arrivée du texte et du bouton |
 | `app.js` | moteur de séance (machine à états calée sur l'horloge), réglages, vibrations, verrouillage de l'écran |
-| `scene.js` | toute la scène sur un `<canvas>` plein écran : palettes du ciel selon l'heure, vagues, lumière, visiteurs |
+| `scene.js` | toute la scène sur un `<canvas>` plein écran : palettes du ciel selon l'heure, vagues, lumière, visiteurs, faune, magie (aura, lucioles, aurore), moments rares, fête de fin. La couleur d'accent de l'interface suit la palette |
 | `audio.js` | son du vent en Web Audio : bruit rose filtré en plusieurs bandes (corps, souffle, sifflement) et nappe d'accords |
 | `sw.js` | service worker : réseau d’abord (toujours à jour en ligne), cache hors ligne |
 | `manifest.webmanifest` | métadonnées de la PWA |
 | `icons/` | icônes. Les PNG sont générés par `tools/make_icons.py`, le SVG est fait à la main |
 
-Le flux d'une image : `app.js` calcule à chaque frame le niveau du souffle (0 = poumons vides, 1 = pleins). Il le passe à `Scene.draw()` (taille de l'orbe et marée) et à `Ambience.update()` (force et timbre du vent).
+Le flux d'une image : `app.js` calcule à chaque frame le niveau du souffle (0 = poumons vides, 1 = pleins). Il le passe à `Scene.draw()` (taille de l'orbe, marée, et tout ce qui suit le souffle) et à `Ambience.update()` (force et timbre du vent). À la fin d'une séance, `app.js` appelle `Scene.celebrate()`.
 
 ### Régénérer les icônes
 

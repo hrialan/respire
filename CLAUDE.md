@@ -6,7 +6,7 @@ Respire : une webapp de cohérence cardiaque (PWA), en HTML, CSS et JavaScript, 
 
 - Serveur local : `uv run python -m http.server 8000`. Python passe toujours par `uv`, jamais par un `python3` nu.
 - Icônes : `uv run tools/make_icons.py`.
-- Pas de tests ni de linter. Vérifie dans le navigateur. Pour tester le ciel à une heure donnée : `?h=19`.
+- Pas de tests ni de linter. Vérifie dans le navigateur. Pour tester le ciel à une heure donnée : `?h=19`. Pour voir un moment rare toutes les 25 s : `?moment`. Pour voir la fête de fin de séance sans faire une séance : `?fete`. Ils se combinent : `?h=23&moment`.
 
 ## Publier
 
@@ -18,7 +18,7 @@ Respire : une webapp de cohérence cardiaque (PWA), en HTML, CSS et JavaScript, 
 
 ## Architecture : les points piégeux
 
-- `app.js` calcule le souffle (0..1) à partir de l'horloge, à chaque frame. Il le passe à `Scene.draw()` et à `Ambience.update()`. Les états sont dans `data-state` sur `#app` : `home → countdown → running ⇄ paused → done`.
+- `app.js` calcule le souffle (0..1) à partir de l'horloge, à chaque frame. Il le passe à `Scene.draw()` et à `Ambience.update()`. À la fin d'une séance, il appelle `Scene.celebrate()`. Les états sont dans `data-state` sur `#app` : `home → countdown → running ⇄ paused → done`.
 - L'orbe est **dessinée sur le canvas plein écran** (`scene.js`). L'anneau de progression, lui, est un SVG dans le DOM (`#orbAnchor`). La scène relit la position de `#orbAnchor` à chaque frame pour que les deux restent superposés. Ne remplace pas cette lecture par un `ResizeObserver` : l'ancre peut bouger sans changer de taille, par exemple quand la légende change de hauteur.
 - `scene.js` aligne la couleur de fond de la page (`--bg`) et le `theme-color` sur la palette du ciel. Ça évite qu'une bande noire apparaisse sous les barres de Safari ou sous la barre d'accueil de l'iPhone.
 
