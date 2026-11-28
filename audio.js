@@ -231,9 +231,10 @@
   }
 
   // The sea. On the in-breath the wave draws back: a low swell and a hiss
-  // that rises and brightens. On the out-breath it breaks (a burst, from a
-  // slightly different place each time), then spreads over the sand, softer
-  // and duller as it ebbs, with the foam fizzing.
+  // that rises and brightens. On the out-breath it rolls in: a dull swell that
+  // builds over about a second (never a sudden crash, which sounded like a
+  // whip), from a slightly different place each time, then spreads over the
+  // sand, softer and duller as it ebbs, with a little foam.
   function waves(src, out) {
     const bodyLp = filter('lowpass', 400, 0.6);               // the water's weight
     const body = gain(0);
@@ -263,12 +264,12 @@
         if (kind === 'out') {
           size = between(0.75, 1.1);
           crash.gain.cancelScheduledValues(t);
-          crash.gain.setTargetAtTime(0.38 * size, t, 0.12);
-          crash.gain.setTargetAtTime(0, t + 0.5, 0.9);
+          crash.gain.setTargetAtTime(0.16 * size, t + 0.2, 0.4);     // rolls in, after the ping
+          crash.gain.setTargetAtTime(0, t + 1.3, 1.2);
           crashLp.frequency.cancelScheduledValues(t);
-          crashLp.frequency.setTargetAtTime(1500, t, 0.1);
-          crashLp.frequency.setTargetAtTime(380, t + 0.4, 1.2);
-          if (crashPan.pan) crashPan.pan.setTargetAtTime(between(-0.4, 0.4), t, 0.05);
+          crashLp.frequency.setTargetAtTime(650, t, 0.4);           // dull: no bright burst
+          crashLp.frequency.setTargetAtTime(300, t + 1, 1.5);
+          if (crashPan.pan) crashPan.pan.setTargetAtTime(between(-0.4, 0.4), t, 0.3);
         } else if (hissPan.pan) {
           hissPan.pan.setTargetAtTime(between(-0.3, 0.3), t, 1);
         }
@@ -285,11 +286,11 @@
           set(foam.gain, on * 0.01, 0.6);
         } else {
           const w = Math.pow(s, 0.7);
-          set(bodyLp.frequency, 220 + 900 * w, 0.4);
-          set(body.gain, on * (0.08 + 0.3 * w * size), 0.2);
-          set(hissBp.frequency, 700 + 1300 * w, 0.5);
-          set(hiss.gain, on * (0.02 + 0.14 * w * size), 0.2);
-          set(foam.gain, on * (0.005 + 0.05 * w * size), 0.8);
+          set(bodyLp.frequency, 220 + 600 * w, 0.6);
+          set(body.gain, on * (0.1 + 0.22 * w * size), 0.45);
+          set(hissBp.frequency, 600 + 900 * w, 0.6);
+          set(hiss.gain, on * (0.02 + 0.09 * w * size), 0.5);
+          set(foam.gain, on * (0.004 + 0.025 * w * size), 1);
         }
         if (!playing) set(crash.gain, 0, 0.3);
       },
